@@ -1,0 +1,251 @@
+/*@Atomic@*/ /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef long long data_type;
+/*@Atomic@*/ typedef int idx_type; /*@CudaAtomic@*/ typedef cuda::atomic<int> idx_type; /*@RaceBug@*/ typedef int idx_type;
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
+
+static const int ThreadsPerBlock = 512;
+/*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/
+//BlankLine
+
+#include "indigo_mst_vertex_cuda.h"
+//BlankLine
+
+/*@Atomic@*/ /*@CudaAtomic@*/ /*@RaceBug@*/ 
+/*@NonPersist@*/ /*@Persist@*/ 
+/*@Thread@*/ /*@Warp@*/ /*@Block@*/ 
+/*@NoExcessThreadsBug@*/ /*@ExcessThreadsBug@*/ /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@NoFieldBug@*/ /*@FieldBug@*/ 
+/*@NoNborBoundsBug@*/ /*@NborBoundsBug@*/
+
+/*@+Persist@*/ 
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+
+static __global__ void init(const ECLgraph g, data_type* const eweight, bool* const included, idx_type* const parent, idx_type* const minv)
+{
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < g.nodes) {
+    //initially, each vertex is its own parent
+    parent[v] = v;
+    minv[v] = INT_MAX;
+  }
+  if (v < g.edges) {
+    included[v] = false;
+    eweight[v] = g.eweight[v];
+  }
+}
+//BlankLine
+
+static __device__ int findRep(int idx, idx_type* const parent)
+{
+  /*@Atomic@*/ int curr = atomicRead(&parent[idx]); /*@CudaAtomic@*/ int curr = parent[idx].load(); /*@RaceBug@*/ int curr = parent[idx];
+  if (curr != idx) {
+    int next, prev = idx;
+    /*@Atomic@*/ while (curr != (next = atomicRead(&parent[curr]))) { /*@CudaAtomic@*/ while (curr != (next = parent[curr].load())) { /*@RaceBug@*/ while (curr != (next = parent[curr])) {
+      /*@Atomic@*/ atomicWrite(&parent[prev], next); /*@CudaAtomic@*/ parent[prev].store(next); /*@RaceBug@*/ parent[prev] = next;
+      prev = curr;
+      curr = next;
+    }
+  }
+  return curr;
+}
+//BlankLine
+
+static __device__ void join(int arep, int brep, idx_type* const parent)
+{
+  int mrep;
+  do {
+    mrep = max(arep, brep);
+    arep = min(arep, brep);
+  /*@Atomic@*/ } while ((brep = atomicCAS(&parent[mrep], mrep, arep)) != mrep); /*@CudaAtomic@*/ } while ((brep = atomicCAS_CUDA(&parent[mrep], mrep, arep)) != mrep); /*@RaceBug@*/ } while ((brep = atomicCAS(&parent[mrep], mrep, arep)) != mrep);
+}
+//BlankLine
+
+static __global__ void mst_first(const ECLgraph g, data_type* const eweight, idx_type* const minv, idx_type* const parent, flag_t* const goagain)
+{
+  /*@Thread@*/ /*@Warp@*/ const int lane = threadIdx.x % WarpSize; /*@Block@*/ 
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+  
+  /*@+NonPersist@*/
+  /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int v = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (v < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+  
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@-Persist@*/
+  
+  /*@+Persist@*/ /*@+NoBoundsBug@*/
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/
+
+  /*@+Persist@*/ /*@+BoundsBug@*/
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/
+  
+    const int arep = findRep(v, parent);
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    data_type updated = 0;
+    
+    /*@+NoNborBoundsBug@*/
+    /*@Thread@*/ for (int e = beg; e < end; e++) { /*@Warp@*/ for (int e = beg + threadIdx.x % WarpSize; e < end; e += WarpSize) { /*@Block@*/ for (int e = beg + threadIdx.x; e < end; e += ThreadsPerBlock) {
+    /*@-NoNborBoundsBug@*/
+    /*@+NborBoundsBug@*/
+    /*@Thread@*/ for (int e = beg; e <= end; e++) { /*@Warp@*/ for (int e = beg + threadIdx.x % WarpSize; e <= end; e += WarpSize) { /*@Block@*/ for (int e = beg + threadIdx.x; e <= end; e += ThreadsPerBlock) {
+    /*@-NborBoundsBug@*/
+      const int n = g.nlist[e];
+      //BlankLine
+      
+      if (n > v) {
+        const int brep = findRep(n, parent);
+        if (arep != brep) {
+          updated = 1;
+          //BlankLine
+          
+          int edx, upd;
+          /*@Atomic@*/ upd = atomicRead(&minv[arep]); /*@CudaAtomic@*/ upd = minv[arep].load(); /*@RaceBug@*/ upd = minv[arep];
+          do {
+            edx = upd;
+            const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
+            if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
+          /*@Atomic@*/ } while ((upd = atomicCAS(&minv[arep], edx, e)) != edx); /*@CudaAtomic@*/ } while ((upd = atomicCAS_CUDA(&minv[arep], edx, e)) != edx); /*@RaceBug@*/ } while ((upd = atomicCAS(&minv[arep], edx, e)) != edx);
+          //BlankLine
+          
+          /*@Atomic@*/ upd = atomicRead(&minv[brep]); /*@CudaAtomic@*/ upd = minv[brep].load(); /*@RaceBug@*/ upd = minv[brep];
+          do {
+            edx = upd;
+            const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
+            if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
+          /*@Atomic@*/ } while ((upd = atomicCAS(&minv[brep], edx, e)) != edx); /*@CudaAtomic@*/ } while ((upd = atomicCAS_CUDA(&minv[brep], edx, e)) != edx); /*@RaceBug@*/ } while ((upd = atomicCAS(&minv[brep], edx, e)) != edx);
+        }
+      }
+    }
+    /*@Thread@*/ if (updated) { /*@Warp@*/ if (__any_sync(~0, updated)) { /*@Block@*/ if (__syncthreads_or(updated)) {
+      /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+        /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1; /*@RaceBug@*/ *goagain = 1;
+      /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+    }
+  }
+}
+//BlankLine
+
+static __global__ void mst_second(const ECLgraph g, bool* const included, idx_type* const minv, idx_type* const parent)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+  
+  /*@+NonPersist@*/
+  /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int v = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (v < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+  
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@-Persist@*/
+  
+  /*@+Persist@*/ /*@+NoBoundsBug@*/
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/
+
+  /*@+Persist@*/ /*@+BoundsBug@*/
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/
+  
+    const int arep = findRep(v, parent);
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    
+    /*@+NoNborBoundsBug@*/
+    /*@Thread@*/ for (int e = beg; e < end; e++) { /*@Warp@*/ for (int e = beg + threadIdx.x % WarpSize; e < end; e += WarpSize) { /*@Block@*/ for (int e = beg + threadIdx.x; e < end; e += ThreadsPerBlock) {
+    /*@-NoNborBoundsBug@*/
+    /*@+NborBoundsBug@*/
+    /*@Thread@*/ for (int e = beg; e <= end; e++) { /*@Warp@*/ for (int e = beg + threadIdx.x % WarpSize; e <= end; e += WarpSize) { /*@Block@*/ for (int e = beg + threadIdx.x; e <= end; e += ThreadsPerBlock) {
+    /*@-NborBoundsBug@*/
+      const int n = g.nlist[e];
+      //BlankLine
+      
+      if (n > v) {
+        const int brep = findRep(n, parent);
+        if (arep != brep) {
+          if ((e == minv[arep]) || (e == minv[brep])) { 
+          // if this was the best edge found for the set
+            join(arep, brep, parent);
+            included[e] = 1;
+          }
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double GPUmst(const ECLgraph g, bool* const included)
+{
+  bool* d_included;
+  if (cudaSuccess != cudaMalloc((void **)&d_included, g.edges * sizeof(bool))) fprintf(stderr, "ERROR: could not allocate d_included\n");
+  
+  idx_type* d_parent;
+  if (cudaSuccess != cudaMalloc((void **)&d_parent, g.nodes * sizeof(idx_type))) fprintf(stderr, "ERROR: could not allocate d_parent\n");
+  
+  idx_type* d_minv;
+  if (cudaSuccess != cudaMalloc((void **)&d_minv, g.nodes * sizeof(idx_type))) fprintf(stderr, "ERROR: could not allocate d_minv\n");
+  
+  data_type* d_eweight;
+  if (cudaSuccess != cudaMalloc((void **)&d_eweight, g.edges * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_eweight\n");
+  
+  flag_t* d_goagain;
+  if (cudaSuccess != cudaMalloc((void **)&d_goagain, sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_goagain\n");
+  
+  /*@+NonPersist@*/
+  /*@Thread@*/ const int blocks = (g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)g.nodes * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = g.nodes;
+  /*@-NonPersist@*/
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0, 0);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+  //BlankLine
+  
+  init<<<(MAX(g.nodes, g.edges) + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(g, d_eweight, d_included, d_parent, d_minv);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  int goagain;
+  int iter = 0;
+  do {
+    iter++;
+    cudaMemset(d_goagain, 0, sizeof(flag_t));
+    //BlankLine
+    
+    mst_first<<<blocks, ThreadsPerBlock>>>(g, d_eweight, d_minv, d_parent, d_goagain);
+    //BlankLine
+    
+    if (cudaSuccess != cudaMemcpy(&goagain, d_goagain, sizeof(flag_t), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of goagain from device failed\n");
+    if (goagain) {
+      mst_second<<<blocks, ThreadsPerBlock>>>(g, d_included, d_minv, d_parent);
+      //BlankLine
+      
+      fill_darray<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_minv, INT_MAX, g.nodes);
+    }
+  } while (goagain);
+  //BlankLine
+  
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  CheckCuda();
+  printf("iterations: %d\n", iter);
+  //BlankLine
+  
+  if (cudaSuccess != cudaMemcpy(included, d_included, g.edges * sizeof(bool), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of included from device failed\n");
+  
+  //BlankLine
+  cudaFree(d_included);
+  cudaFree(d_parent);
+  cudaFree(d_minv);
+  cudaFree(d_eweight);
+  cudaFree(d_goagain);
+  return runtime;
+}

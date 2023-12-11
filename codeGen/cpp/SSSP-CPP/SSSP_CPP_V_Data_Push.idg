@@ -1,0 +1,172 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_sssp_vertex_cpp.h"
+/*@Race1@*/ typedef data_type shared_t; /*@Atomic@*/ typedef std::atomic<data_type> shared_t;
+typedef std::atomic<int> idx_t;
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@NonDeterm@*/ static void init(const int src, shared_t* const dist, const int size, const ECLgraph g, int* const wl1, idx_t &wlsize) /*@Determ@*/ static void init(const int src, shared_t* const dist, shared_t* const dist_n, const int size, const ECLgraph g, int* const wl1, idx_t &wlsize)
+{
+  // initialize dist array
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@NonDeterm@*/ /*@Determ@*/ dist_n[v] = temp;
+    dist[v] = temp;
+  }
+  //BlankLine
+  
+  // initialize worklist
+  wl1[0] = src;
+  wlsize = 1;
+}
+//BlankLine
+
+/*@+NonDup@*/
+/*@NonDeterm@*/ static void sssp_vertex_data(const ECLgraph g, shared_t* const dist, const int* const wl1, const int wl1size, int* const wl2, idx_t &wl2size, const int iter, idx_t* const time, const int threadID, const int threadCount) /*@Determ@*/ static void sssp_vertex_data(const ECLgraph g, shared_t* const dist, shared_t* const dist_n, const int* const wl1, const int wl1size, int* const wl2, idx_t &wl2size, const int iter, idx_t* const time, const int threadID, const int threadCount)
+/*@-NonDup@*/
+/*@+Dup@*/
+/*@NonDeterm@*/ static void sssp_vertex_data(const ECLgraph g, shared_t* const dist, const int* const wl1, const int wl1size, int* const wl2, idx_t &wl2size, const int iter, const int threadID, const int threadCount) /*@Determ@*/ static void sssp_vertex_data(const ECLgraph g, shared_t* const dist, shared_t* const dist_n, const int* const wl1, const int wl1size, int* const wl2, idx_t &wl2size, const int iter, const int threadID, const int threadCount)
+/*@-Dup@*/
+{
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int idx = begNode; idx < endNode; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx < top; idx += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int idx = begNode; idx <= endNode; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx <= top; idx += threadCount) { 
+  /*@-BoundsBug@*/
+    const int src = wl1[idx];
+    const data_type s = dist[src];
+    /*@-NonDeterm@*/
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
+    //BlankLine
+
+    /*@NoRangeBug@*/ if (s != maxval) { /*@RangeBug@*/
+      /*@+ReadWrite@*/
+      /*@NonDeterm@*/ bool update = false; /*@Determ@*/ suppress
+      /*@-ReadWrite@*/
+
+      /*@NoNborBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NborBoundsBug@*/ for (int i = beg; i <= end; i++) {
+        const int dst = g.nlist[i];
+        const data_type new_dist = s + g.eweight[i];
+        //BlankLine
+
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        const data_type d = dist[dst];
+        if (d > new_dist) {
+          dist[dst] = new_dist;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+        /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+        /*@Race1@*/ suppress /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
+        /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+        /*@+Determ@*/ /*@+ReadModifyWrite@*/
+        /*@Race1@*/ suppress /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
+        /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+          /*@+NonDup@*/
+          if (atomicMax(&time[dst], iter) != iter) {
+            wl2[wl2size++] = dst;
+          }
+          /*@-NonDup@*/
+          /*@+Dup@*/
+          wl2[wl2size++] = dst;
+          /*@-Dup@*/
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        update = true;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+        }
+      }
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      if (update) {
+        /*@NonDup@*/ if (atomicMax(&time[src], iter) != iter) { /*@Dup@*/
+          wl2[wl2size++] = src;
+        /*@NonDup@*/ } /*@Dup@*/
+        }
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+      /*@+Determ@*/
+      /*@Race1@*/ dist_n[src] = s; /*@Atomic@*/ atomicMin(&dist_n[src], s);
+      /*@-Determ@*/
+    /*@NoRangeBug@*/ } /*@RangeBug@*/
+  }
+}
+//+BlankLine
+
+static double CPUsssp_vertex(const int src, const ECLgraph& g, data_type* const distance, const int threadCount)
+{
+  shared_t* dist = (shared_t*)distance;
+  /*@NonDeterm@*/ /*@Determ@*/ shared_t* dist_new = new shared_t [g.nodes];
+  const int size = std::max(g.edges, g.nodes);
+  int* wl1 = new int [size];
+  int* wl2 = new int [size];
+  /*@NonDup@*/ idx_t* time = new idx_t [g.nodes]; /*@Dup@*/
+  idx_t wl1size;
+  idx_t wl2size;
+  std::thread threadHandles[threadCount];
+  //BlankLine
+  
+  /*@NonDeterm@*/ init(src, dist, g.nodes, g, wl1, wl1size); /*@Determ@*/ init(src, dist, dist_new, g.nodes, g, wl1, wl1size);
+  /*@NonDup@*/ std::fill(time, time + g.nodes, 0); /*@Dup@*/
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  do {
+    iter++;
+    wl2size = 0;
+
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@+NonDup@*/
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(sssp_vertex_data, g, dist, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, time, i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(sssp_vertex_data, g, dist, dist_new, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, time, i, threadCount);
+      /*@-NonDup@*/
+      /*@+Dup@*/
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(sssp_vertex_data, g, dist, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(sssp_vertex_data, g, dist, dist_new, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, i, threadCount);
+      /*@-Dup@*/
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    std::swap(wl1, wl2);
+    wl1size = wl2size.load();
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(dist, dist_new);
+  } while (wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ delete [] (iter % 2 ? dist : dist_new);
+  delete [] wl1;
+  delete [] wl2;
+  /*@NonDup@*/ delete [] time; /*@Dup@*/
+  return runtime;
+}

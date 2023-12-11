@@ -1,0 +1,107 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_bfs_edge_omp.h"
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/static void init(const int src, data_type* const dist, const int size) /*@Determ@*/static void init(const int src, data_type* const dist, data_type* const dist_n, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@NonDeterm@*/ /*@Determ@*/ dist_n[v] = temp;
+    dist[v] = temp;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void bfs(ECLgraph g, const int* const sp, data_type* const dist, int* goagain) /*@Determ@*/ static void bfs(ECLgraph g, const int* const sp, data_type* const dist, data_type* const dist_n, int* goagain)
+{
+  /*@NoFieldBug@*/ const int gsize = g.edges; /*@FieldBug@*/ const int gsize = g.nodes;
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@NoBoundsBug@*/ for (int e = 0; e < gsize; e++) { /*@BoundsBug@*/ for (int e = 0; e <= gsize; e++) {
+
+    //BlankLine
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ const data_type s = dist[src]; /*@MixSyncBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+    
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@RaceBug@*/ const data_type s = dist[src]; /*@Atomic@*/ const data_type s = atomicRead(&dist[src]);
+    /*@NoMixSyncBug@*/ /*@MixSyncBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ data_type s; /*@MixSyncBug@*/ const data_type s = atomicRead(&dist[src]);
+    /*@NoMixSyncBug@*/ #pragma omp critical /*@MixSyncBug@*/
+    /*@NoMixSyncBug@*/ s = dist[src]; /*@MixSyncBug@*/
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+     
+    //BlankLine
+
+    /*@NoOverflowBug@*/ if (s != maxval) { /*@OverflowBug@*/ {
+      const data_type new_dist = s + 1;
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      /*@RaceBug@*/ const data_type d = dist[dst]; /*@Atomic@*/ const data_type d = atomicRead(&dist[dst]);
+      /*@NoLivelockBug@*/ if (d > new_dist) { /*@LivelockBug@*/ if (d >= new_dist) {
+        /*@RaceBug@*/ dist[dst] = new_dist; /*@Atomic@*/ atomicWrite(&dist[dst], new_dist);
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&dist[dst], new_dist) > new_dist) {
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&dist_n[dst], new_dist) > new_dist) {
+      /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+      /*@+NonDeterm@*/
+      atomicWrite(goagain, 1);
+      /*@-NonDeterm@*/
+      /*@+Determ@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ atomicWrite(goagain, 1);
+      /*@-Determ@*/
+      }
+    }
+  }
+}
+//BlankLine
+
+static double CPUbfs_edge(const int src, ECLgraph g, data_type* dist, const int* const sp)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* dist_new = (data_type*) malloc(g.nodes * sizeof(data_type));
+ 
+  /*@NonDeterm@*/ init(src, dist, g.nodes); /*@Determ@*/ init(src, dist, dist_new, g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int* goagain = malloc(sizeof(int));
+  int iter = 0;
+  do {
+    iter++;
+    *goagain = 0;
+    /*@NonDeterm@*/ bfs(g, sp, dist, goagain); /*@Determ@*/ bfs(g, sp, dist, dist_new, goagain);
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(dist, dist_new);
+  } while (*goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  free(goagain);
+  return runtime;
+}

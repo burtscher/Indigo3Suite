@@ -1,0 +1,114 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include <stdatomic.h>
+/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@Race@*/ typedef data_type shared_t; 
+#include "indigo_bfs_vertex_c.h"
+typedef _Atomic bool flag_t;
+//BlankLine
+
+/*@IntType@*/ const data_type maxval = INT_MAX; /*@LongType@*/ const data_type maxval = ULLONG_MAX;
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static ECLgraph g;
+static shared_t* dist;
+static flag_t goagain;
+static int iter;
+static int threadCount;
+
+//BlankLine
+static void init(const int src, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    dist[v] = (v == src) ? 0 : maxval;
+  }
+}
+//BlankLine
+
+static int bfs(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    data_type d = dist[v];
+
+    /*@NborBoundsBug@*/ for (int i = beg; i <= end; i++) { /*@NoNborBoundsBug@*/ for (int i = beg; i < end; i++) {
+      const int src = g.nlist[i];
+      const data_type s = dist[src];
+      /*@+NoRangeBug@*/ 
+      /*@NonDeterm@*/ if (s != maxval) { /*@Determ@*/ if (s == iter) {
+      /*@-NoRangeBug@*/ 
+        const data_type new_dist = s + 1;
+        if (new_dist < d) {
+          d = new_dist;
+          goagain = 1;
+        }
+      /*@NoRangeBug@*/ } /*@RangeBug@*/
+    }
+    dist[v] = d;
+  }
+}
+//BlankLine
+
+static double CPPbfs_vertex(const int src, const ECLgraph l_g, data_type* const l_dist, const int l_threadCount)
+{
+  dist = (shared_t*)l_dist;
+  g = l_g;
+  threadCount = l_threadCount;
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+  
+  init(src, g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  // iterate until no more changes
+  iter = 0;
+  do {
+    goagain = 0;
+    //BlankLine
+    
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], bfs, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    iter++;
+  } while (goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  return runtime;
+}

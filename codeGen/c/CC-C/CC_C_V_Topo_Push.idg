@@ -1,0 +1,141 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_vertex_c.h"
+/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@RaceBug@*/ typedef data_type shared_t; 
+typedef _Atomic bool flag_t;
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@NonDeterm@*/ /*@Determ@*/
+/*@+Determ@*/
+/*@Atomic@*/ /*@RaceBug@*/ suppress
+/*@-Determ@*/
+
+static ECLgraph g;
+static shared_t* label;
+/*@NonDeterm@*/ /*@Determ@*/ static shared_t* label_n;
+static flag_t goagain;
+static int threadCount;
+
+//BlankLine
+static void init(const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    /*@NonDeterm@*/ /*@Determ@*/ label_n[v] = v;
+    label[v] = v;
+  }
+}
+//BlankLine
+
+static int cc(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/ 
+  
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    const data_type new_label = label[v];
+    bool updated = false;
+    //BlankLine
+    
+    /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug@*/ for (int i = beg; i <= end; i++) { 
+      const int dst = g.nlist[i];
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      const data_type d = label[dst];
+      
+      /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+          label[dst] = new_label;
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (atomicMin(&label[dst], new_label) > new_label) { /*@RaceBug@*/ suppress 
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (atomicMin(&label_n[dst], new_label) > new_label) { /*@RaceBug@*/ suppress 
+       /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+        updated = true;
+      }
+    }
+    //BlankLine
+
+    if (updated) {
+      goagain = 1;
+    }
+  }
+}
+//BlankLine
+
+static double CPUcc_vertex(const ECLgraph l_g, data_type* const l_label, const int l_threadCount)
+{
+  g = l_g;
+  label = (shared_t*)l_label;
+  threadCount = l_threadCount;
+  /*@NonDeterm@*/ /*@Determ@*/ label_n = (shared_t*)malloc(g.nodes * sizeof(shared_t));
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+  
+  init(g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  do {
+    iter++;
+    goagain = 0;
+    
+    //BlankLine
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], cc, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(label, label_n);
+  } while (goagain);
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ free(iter % 2 ? label : label_n);
+  return runtime;
+}

@@ -1,0 +1,117 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_edge_cpp.h"
+/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@RaceBug@*/ typedef data_type shared_t; 
+typedef std::atomic<bool> flag_t;
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+/*@Block@*/ declare /*@Cyclic@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/ /*@Determ@*/
+/*@+Determ@*/
+/*@Atomic@*/ /*@RaceBug@*/ suppress
+/*@-Determ@*/
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@NonDeterm@*/ static void init(shared_t* const label, const int size) /*@Determ@*/ static void init(shared_t* const label, shared_t* const label_n, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    /*@NonDeterm@*/ /*@Determ@*/ label_n[v] = v;
+    label[v] = v;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void cc(const ECLgraph g, const int* const sp, shared_t* const label, flag_t& goagain, const int threadID, const int threadCount) /*@Determ@*/ static void cc(const ECLgraph g, const int* const sp, shared_t* const label, shared_t* const label_n, flag_t& goagain, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.edges; /*@FieldBug@*/ const int N = g.nodes;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begEdge = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endEdge = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endEdge = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/
+
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int e = begEdge; e < endEdge; e++) { /*@Cyclic@*/ for (int e = threadID; e < N; e += threadCount) {
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int e = begEdge; e <= endEdge; e++) { /*@Cyclic@*/ for (int e = threadID; e <= N; e += threadCount) {
+  /*@-BoundsBug@*/ 
+  
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    const data_type new_label = label[src];
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    const data_type d = label[dst];
+    /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+      label[dst] = new_label;
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@Atomic@*/ if (atomicMin(&label[dst], new_label) > new_label) { /*@RaceBug@*/ suppress 
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@Atomic@*/ if (atomicMin(&label_n[dst], new_label) > new_label) { /*@RaceBug@*/ suppress 
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+      goagain = 1;
+    }
+  }
+}
+//BlankLine
+
+static double CPUcc_edge(const ECLgraph g, data_type* const label_orig, const int* const sp, const int threadCount)
+{
+  shared_t* label = (shared_t*)label_orig;
+  /*@NonDeterm@*/ /*@Determ@*/ shared_t* label_new = new shared_t [g.nodes];
+  std::thread threadHandles[threadCount];
+  //BlankLine
+
+  /*@NonDeterm@*/ init(label, g.nodes); /*@Determ@*/ init(label, label_new, g.nodes);
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  // iterate until no more changes
+  flag_t goagain;
+  int iter = 0;
+  do {
+    iter++;
+    goagain = 0;
+    
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(cc, g, sp, label, std::ref(goagain), i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(cc, g, sp, label, label_new, std::ref(goagain), i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(label, label_new);
+  } while (goagain);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ delete [] (iter % 2 ? label : label_new);
+  return runtime;
+}

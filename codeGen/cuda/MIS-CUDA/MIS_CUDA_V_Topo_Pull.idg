@@ -1,0 +1,198 @@
+/*@NonDeterm@*/ declare /*@Determ@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ declare
+/*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t;
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+
+static const int ThreadsPerBlock = 512;
+/*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/
+//BlankLine
+
+#include "indigo_mis_vertex_cuda.h"
+//BlankLine
+
+/*@+NonDeterm@*/
+static __global__ void init(data_type* const priority, flag_t* const status, const int size)
+/*@-NonDeterm@*/
+/*@+Determ@*/
+static __global__ void init(data_type* const priority, flag_t* const status, flag_t* const status_n, const int size)
+/*@-Determ@*/
+{
+  // initialize arrays
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < size) 
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/
+static __global__ void mis(const ECLgraph g, const data_type* const priority, flag_t* const status, flag_t* const goagain)
+/*@-NonDeterm@*/
+/*@+Determ@*/
+static __global__ void mis(const ECLgraph g, const data_type* const priority, flag_t* const status, flag_t* const status_n, flag_t* const goagain)
+/*@-Determ@*/
+{
+  /*@Thread@*/ /*@Warp@*/ const int lane = threadIdx.x % WarpSize; /*@Block@*/ 
+  
+  // go over all the nodes
+  /*@+NonPersist@*/
+  /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int v = blockIdx.x;
+  if (v < g.nodes) {
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@Thread@*/ for (int v = tid; v < g.nodes; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < g.nodes; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < g.nodes; v += gridDim.x) {
+  /*@-Persist@*/
+  
+    //BlankLine
+    /*@+Thread@*/
+    /*@Atomic@*/ if (atomicRead(&status[v]) == undecided) { /*@CudaAtomic@*/ if (status[v].load() == undecided) {
+    /*@-Thread@*/
+    /*@+Warp@*/
+    /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[v].load() == undecided))) {
+    /*@-Warp@*/
+    /*@+Block@*/
+    /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v].load() == undecided))) {
+    /*@-Block@*/
+      int i = g.nindex[v];
+      // try to find a non-excluded neighbor whose priority is higher
+      /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+        /*@+Atomic@*/ 
+        while ((i < g.nindex[v + 1]) && ((atomicRead(&status[g.nlist[i]]) == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-Atomic@*/
+        /*@+CudaAtomic@*/ 
+        while ((i < g.nindex[v + 1]) && ((status[g.nlist[i]].load() == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-CudaAtomic@*/
+          i++;
+        }
+      /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      /*@Thread@*/ if (i < g.nindex[v + 1]) { /*@Warp@*/ if (__any_sync(~0, (lane == 0) && (i < g.nindex[v + 1]))) { /*@Block@*/ if (__syncthreads_or((threadIdx.x == 0) && (i < g.nindex[v + 1]))) {
+        // found such a neighbor -> check if neighbor is included
+        /*@+Thread@*/
+        /*@Atomic@*/ if (atomicRead(&status[g.nlist[i]]) == included) { /*@CudaAtomic@*/ if (status[g.nlist[i]].load() == included) {
+        /*@-Thread@*/
+        /*@+Warp@*/
+        /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[g.nlist[i]]) == included))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[g.nlist[i]].load() == included))) {
+        /*@-Warp@*/
+        /*@+Block@*/
+        /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[g.nlist[i]]) == included))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[g.nlist[i]].load() == included))) {
+        /*@-Block@*/
+          // found included neighbor -> exclude self
+          /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+            /*@+NonDeterm@*/
+            /*@Atomic@*/ atomicWrite(&status[v], excluded); /*@CudaAtomic@*/ status[v].store(excluded);
+            /*@-NonDeterm@*/
+            /*@+Determ@*/
+            /*@Atomic@*/ atomicWrite(&status_n[v], excluded); /*@CudaAtomic@*/ status_n[v].store(excluded);
+            /*@-Determ@*/
+          /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+        } else {
+          /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+            /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1;
+          /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+        }
+      } else {
+        // no such neighbor -> self is "included"
+        /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+          /*@+NonDeterm@*/
+          /*@Atomic@*/ atomicWrite(&status[v], included); /*@CudaAtomic@*/ status[v].store(included);
+          /*@-NonDeterm@*/
+          /*@+Determ@*/
+          /*@Atomic@*/ atomicWrite(&status_n[v], included); /*@CudaAtomic@*/ status_n[v].store(included);
+          /*@-Determ@*/
+        /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double GPUmis_vertex(const ECLgraph g, data_type* const priority, int* const status)
+{
+  flag_t* d_goagain;
+  if (cudaSuccess != cudaMalloc((void **)&d_goagain, sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_goagain\n");
+  data_type* d_priority;
+  if (cudaSuccess != cudaMalloc((void **)&d_priority, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_priority\n");
+  flag_t* d_status;
+  if (cudaSuccess != cudaMalloc((void **)&d_status, g.nodes * sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_status\n");
+  /*@+Determ@*/
+  flag_t* d_status_new;
+  if (cudaSuccess != cudaMalloc((void **)&d_status_new, g.nodes * sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_status_new\n");
+  /*@-Determ@*/
+  //BlankLine
+
+  /*@+NonPersist@*/
+  /*@Thread@*/ const int blocks = (g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)g.nodes * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = g.nodes;
+  /*@-NonPersist@*/
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0, false);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+  //BlankLine
+
+  /*@+NonDeterm@*/ /*@+NonPersist@*/
+  /*@Thread@*/ init<<<blocks, ThreadsPerBlock>>>(d_priority, d_status, g.nodes); /*@Warp@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes); /*@Block@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes);
+  /*@-NonDeterm@*/ /*@-NonPersist@*/
+  /*@+Determ@*/ /*@+NonPersist@*/
+  /*@Thread@*/ init<<<blocks, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes); /*@Warp@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes); /*@Block@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes);
+  /*@-Determ@*/ /*@-NonPersist@*/
+  /*@+Persist@*/
+  /*@NonDeterm@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes); /*@Determ@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes);
+  /*@-Persist@*/
+  
+  //BlankLine
+  struct timeval beg, end;
+  gettimeofday(&beg, NULL);
+  //BlankLine
+
+  flag_t goagain;
+  int iter = 0;
+  do {
+    iter++;
+    cudaMemset(d_goagain, 0, sizeof(flag_t));
+    //BlankLine
+    
+    /*@+NonDeterm@*/
+    mis<<<blocks, ThreadsPerBlock>>>(g, d_priority, d_status, d_goagain);
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    mis<<<blocks, ThreadsPerBlock>>>(g, d_priority, d_status, d_status_new, d_goagain);
+    /*@-Determ@*/
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ if (cudaSuccess != cudaMemcpy(d_status, d_status_new, g.nodes * sizeof(flag_t), cudaMemcpyDeviceToDevice)) fprintf(stderr, "ERROR: copying of d_status_new to d_status on device failed\n");
+    if (cudaSuccess != cudaMemcpy(&goagain, d_goagain, sizeof(flag_t), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of goagain from device failed\n");
+  } while (goagain);
+
+  //BlankLine
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec - beg.tv_sec + (end.tv_usec - beg.tv_usec) / 1000000.0;
+  //BlankLine
+  
+  CheckCuda();
+  if (cudaSuccess != cudaMemcpy(status, d_status, g.nodes * sizeof(flag_t), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of status from device failed\n"); 
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ cudaFree(d_status_new);
+  cudaFree(d_goagain);
+  cudaFree(d_status);
+  cudaFree(d_priority);
+  return runtime;
+}

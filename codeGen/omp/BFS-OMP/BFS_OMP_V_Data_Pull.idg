@@ -1,0 +1,142 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_bfs_vertex_omp.h"
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@NonDeterm@*/ static void init(const int src, data_type* const dist, const int size, ECLgraph g, int* const wl1, int* wlsize, int* const time) /*@Determ@*/ static void init(const int src, data_type* const dist, data_type* const dist_n, const int size, ECLgraph g, int* const wl1, int* wlsize, int* const time)
+{
+  // initialize dist array
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@+Determ@*/
+    dist_n[v] = temp;
+    /*@-Determ@*/
+    dist[v] = temp;
+    time[v] = 0;
+  }
+  //BlankLine
+
+  // initialize worklist
+  int idx = 0;
+  for (int i = g.nindex[src]; i < g.nindex[src + 1]; i++) {
+    wl1[idx] = g.nlist[i];
+    idx++;
+  }
+  *wlsize = idx;
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void bfs_vertex_data(ECLgraph g, data_type* const dist, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time) /*@Determ@*/ static void bfs_vertex_data(ECLgraph g, data_type* const dist, data_type* const dist_n, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx < wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx < g.nodes; idx ++) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx <= wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx <= g.nodes; idx ++) { 
+  /*@-BoundsBug@*/
+    const int v = wl1[idx];
+    /*@+NonDeterm@*/
+    /*@Atomic@*/ data_type d = atomicRead(&dist[v]); /*@RaceBug@*/ data_type d = dist[v];
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    data_type d = dist[v];
+    /*@-Determ@*/
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    bool updated = false;
+    //BlankLine
+
+    /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug@*/ for (int i = beg; i <= end; i++) {
+      const int src = g.nlist[i];
+      /*@+NonDeterm@*/
+      /*@Atomic@*/ const data_type s = atomicRead(&dist[src]); /*@RaceBug@*/ const data_type s = dist[src];
+      /*@-NonDeterm@*/
+      /*@+Determ@*/
+      const data_type s = dist[src];
+      /*@-Determ@*/
+      /*@NoOverflowBug@*/ if (s != maxval) { /*@OverflowBug@*/ {
+        const data_type new_dist = s + 1;
+        /*@NoLivelockBug@*/  if (d > new_dist) { /*@LivelockBug@*/  if (d >= new_dist) {
+          d = new_dist;
+          updated = true;
+        }
+      }
+      /*@+Determ@*/
+      /*@Atomic@*/ critical_min(&dist_n[src], s); /*@RaceBug@*/ dist_n[src] = s;
+      /*@-Determ@*/
+    }
+    //BlankLine
+
+    if (updated) {
+      /*@+NonDeterm@*/
+      /*@Atomic@*/ atomicWrite(&dist[v], d); /*@RaceBug@*/ suppress;
+      /*@-NonDeterm@*/
+
+      /*@+Determ@*/
+      critical_min(&dist_n[v], d);
+      /*@-Determ@*/
+
+      for (int j = beg; j < end; j++) {
+        const int n = g.nlist[j];
+        if (critical_max(&time[n], iter) != iter) {
+          wl2[fetch_and_add(wl2size)] = n;
+        }
+      }
+    }
+  }
+}
+
+static double CPUbfs_vertex(const int src, ECLgraph g, data_type* dist)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* dist_new = (int*)malloc(g.nodes * sizeof(data_type));
+  const int size = MAX(g.edges, g.nodes);
+  int* wl1 = (int*)malloc(size * sizeof(int));
+  int* wl2 = (int*)malloc(size * sizeof(int));
+  int* time = (int*)malloc(g.nodes * sizeof(int));
+  int* wl1size = (int*)malloc(sizeof(int));
+  int* wl2size = (int*)malloc(sizeof(int));
+  // int* wl1 = new int [size];
+  // int* wl2 = new int [size];
+  // int* time = new int [g.nodes];
+  // int* wl1size;
+  // int* wl2size;
+
+  //BlankLine
+  /*@NonDeterm@*/ init(src, dist, g.nodes, g, wl1, wl1size, time); /*@Determ@*/ init(src, dist, dist_new, g.nodes, g, wl1, wl1size, time);
+  //BlankLine
+ 
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  do {
+    iter++;
+    *wl2size = 0;
+
+    //BlankLine
+    /*@NonDeterm@*/ bfs_vertex_data(g, dist, wl1, *wl1size, wl2, wl2size, iter, time); /*@Determ@*/ bfs_vertex_data(g, dist, dist_new, wl1, *wl1size, wl2, wl2size, iter, time);
+    //BlankLine
+    SWAP(wl1, wl2);
+    *wl1size = *wl2size;
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(dist, dist_new);
+  } while (*wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ free(iter % 2 ? dist : dist_new);
+  free(wl1);
+  free(wl2);
+  free(time);
+  free(wl1size);
+  free(wl2size);
+  return runtime;
+}

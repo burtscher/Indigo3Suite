@@ -1,0 +1,147 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_edge_cpp.h"
+/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@RaceBug@*/ typedef data_type shared_t;
+typedef std::atomic<int> idx_t;
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/ static void init(shared_t* const label, const int size, const ECLgraph g, int* const wl1, idx_t& wlsize, idx_t* const time) /*@Determ@*/ static void init(shared_t* const label, shared_t* const label_n, const int size, const ECLgraph g, int* const wl1, idx_t& wlsize, idx_t* const time)
+{
+  int idx = 0;
+  // initialize label array
+  for (int v = 0; v < size; v++) {
+    /*@+Determ@*/
+    label_n[v] = v;
+    /*@-Determ@*/
+    label[v] = v;
+    //BlankLine
+
+    for (int i = g.nindex[v]; i < g.nindex[v + 1]; i++) {
+      wl1[idx] = i;
+      idx++;
+    }
+  }
+  wlsize = idx;
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void cc_edge_data(const ECLgraph g, const int* const sp, shared_t* const label, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int iter, idx_t* const time, const int threadID, const int threadCount) /*@Determ@*/static void cc_edge_data(const ECLgraph g, const int* const sp, shared_t* const label, shared_t* const label_n, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int iter, idx_t* const time, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begEdge = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endEdge = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endEdge = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int idx = begEdge; idx < endEdge; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx < top; idx += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int idx = begEdge; idx <= endEdge; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx <= top; idx += threadCount) { 
+  /*@-BoundsBug@*/ 
+
+    const int e = wl1[idx];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    const data_type new_label = label[src];
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    data_type d = label[dst];
+    /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+      label[dst] = new_label;
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@Atomic@*/ if (atomicMin(&label[dst], new_label) > new_label) { /*@RaceBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@Atomic@*/ if (atomicMin(&label_n[dst], new_label) > new_label) { /*@RaceBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+      /*@+NonDeterm@*/
+      /*@ReadWrite@*/ if (atomicMax(&time[e], iter) != iter) { /*@ReadModifyWrite@*/
+        /*@ReadWrite@*/ wl2[wl2size++] = e; /*@ReadModifyWrite@*/
+      /*@ReadWrite@*/ } /*@ReadModifyWrite@*/
+      /*@-NonDeterm@*/
+      for (int j = g.nindex[dst]; j < g.nindex[dst + 1]; j++) {
+        if (atomicMax(&time[j], iter) != iter) {
+          wl2[wl2size++] = j;
+        }
+      }
+    }
+    /*@+Determ@*/
+    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ label_n[src] = new_label;
+    /*@-Determ@*/
+  }
+}
+//BlankLine
+
+static double CPUcc_edge(const ECLgraph g, data_type* const label_orig, const int* const sp, const int threadCount)
+{
+  shared_t* label = (shared_t*)label_orig;
+  /*@NonDeterm@*/ /*@Determ@*/ shared_t* label_new = new shared_t [g.nodes];
+  const int size = std::max(g.edges, g.nodes);
+  int* wl1 = new int [size];
+  int* wl2 = new int [size];
+  idx_t* time = new idx_t [g.edges];
+  idx_t wl1size;
+  idx_t wl2size;
+  std::thread threadHandles[threadCount];
+  //BlankLine
+  
+  /*@NonDeterm@*/ init(label, g.nodes, g, wl1, wl1size, time); /*@Determ@*/ init(label, label_new, g.nodes, g, wl1, wl1size, time);
+  /*@Init@*/ std::fill((int*)time, (int*)time + g.edges, 0); /*@UninitializedBug@*/ std::fill((int*)time, (int*)time + g.nodes, 0); 
+
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  do {
+    iter++;
+    wl2size = 0;
+
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(cc_edge_data, g, sp, label, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, time, i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(cc_edge_data, g, sp, label, label_new, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, time, i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    std::swap(wl1, wl2);
+    wl1size = wl2size.load();
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(label, label_new);
+  } while (wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ delete [] (iter % 2 ? label : label_new);
+  delete [] wl1;
+  delete [] wl2;
+  delete [] time;
+  return runtime;
+}

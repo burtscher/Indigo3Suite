@@ -1,0 +1,169 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef long long data_type;
+#include "indigo_mst_edge_omp.h"
+//BlankLine
+
+/*@Atomic@*/ /*@RaceBug@*/ /*@MixSyncBug@*/ 
+/*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@NoFieldBug@*/ /*@FieldBug@*/ 
+
+static void init(const ECLgraph g, data_type* const eweight, bool* const included, int* const parent, int* const minv)
+{
+  // std::fill(included, included + g.edges, false);
+  for (int e = 0; e < g.edges; e++) {
+    included[e] = false;
+  }
+  for (int v = 0; v < g.nodes; v++) {
+    //initially, each vertex is its own parent
+    parent[v] = v;
+    minv[v] = INT_MAX;
+  }
+  for (int e = 0; e < g.edges; e++) {
+    eweight[e] = g.eweight[e];
+  }
+}
+//BlankLine
+
+static int findRep(int idx, int* const parent)
+{
+  /*@Atomic@*/ int curr = criticalRead(&parent[idx]); /*@RaceBug@*/ int curr = parent[idx]; /*@MixSyncBug@*/ int curr = atomicRead(&parent[idx]);
+  if (curr != idx) {
+    int next, prev = idx;
+    /*@Atomic@*/ while (curr != (next = criticalRead(&parent[curr]))) { /*@RaceBug@*/ while (curr != (next = parent[curr])) { /*@MixSyncBug@*/ while (curr != (next = atomicRead(&parent[curr]))) {
+      /*@Atomic@*/ criticalWrite(&parent[prev], next); /*@RaceBug@*/ parent[prev] = next; /*@MixSyncBug@*/ atomicWrite(&parent[prev], next);
+      prev = curr;
+      curr = next;
+    }
+  }
+  return curr;
+}
+//BlankLine
+
+static void join(int arep, int brep, int* const parent)
+{
+  int mrep;
+  do {
+    mrep = MAX(arep, brep);
+    arep = MIN(arep, brep);
+  } while ((brep = critical_CAS(&parent[mrep], mrep, arep)) != mrep);
+}
+//BlankLine
+
+static void mst_first(const ECLgraph g, data_type* const eweight, const int* const sp, int* const minv, int* const parent, int* goagain)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int e = 0; e < g.edges; e++) { /*@FieldBug@*/ for (int e = 0; e < g.nodes; e++) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int e = 0; e <= g.edges; e++) { /*@FieldBug@*/ for (int e = 0; e <= g.nodes; e++) { 
+  /*@-BoundsBug@*/ 
+    
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    //BlankLine
+    
+    if (dst > src) {
+      const int arep = findRep(src, parent);
+      const int brep = findRep(dst, parent);
+      if (arep != brep) { 
+        /*@Atomic@*/ atomicWrite(goagain, 1); /*@RaceBug@*/ *goagain = 1; /*@MixSyncBug@*/ atomicWrite(goagain, 1);
+        //BlankLine
+        
+        int edx, upd;
+        /*@Atomic@*/ #pragma omp critical /*@RaceBug@*/ /*@MixSyncBug@*/ 
+        /*@Atomic@*/ upd = minv[arep]; /*@RaceBug@*/ upd = minv[arep]; /*@MixSyncBug@*/ upd = atomicRead(&minv[arep]);
+        do {
+          edx = upd;
+          const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
+          if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
+        } while ((upd = critical_CAS(&minv[arep], edx, e)) != edx);
+        //BlankLine
+        
+        /*@Atomic@*/ #pragma omp critical /*@RaceBug@*/ /*@MixSyncBug@*/ 
+        /*@Atomic@*/ upd = minv[brep]; /*@RaceBug@*/ upd = minv[brep]; /*@MixSyncBug@*/ upd = atomicRead(&minv[brep]);
+        do {
+          edx = upd;
+          const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
+          if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
+        } while ((upd = critical_CAS(&minv[brep], edx, e)) != edx);
+      }
+    }
+  }
+}
+//BlankLine
+
+static void mst_second(const ECLgraph g, const int* const sp, bool* const included, int* const minv, int* const parent)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int e = 0; e < g.edges; e++) { /*@FieldBug@*/ for (int e = 0; e < g.nodes; e++) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int e = 0; e <= g.edges; e++) { /*@FieldBug@*/ for (int e = 0; e <= g.nodes; e++) { 
+  /*@-BoundsBug@*/ 
+
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    //BlankLine
+    
+    if (dst > src) {
+      const int arep = findRep(src, parent);
+      const int brep = findRep(dst, parent);
+      if (arep != brep) {
+        if ((e == minv[arep]) || (e == minv[brep])) { 
+        // if this was the best edge found for the set
+          join(arep, brep, parent);
+          included[e] = true;
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double CPUmst(const ECLgraph g, const int* const sp, bool* const included)
+{
+  int* parent = malloc(sizeof(int) * g.nodes);
+  int* minv = malloc(sizeof(int) * g.nodes);
+  data_type* eweight = malloc(sizeof(data_type) * g.edges);
+  //BlankLine
+  
+  init(g, eweight, included, parent, minv);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  int* goagain = malloc(sizeof(int));
+  int iter = 0;
+  do {
+    iter++;
+    *goagain = 0;
+    //BlankLine
+    
+    mst_first(g, eweight, sp, minv, parent, goagain);
+    //BlankLine
+    
+    if (*goagain) {
+      mst_second(g, sp, included, minv, parent);
+      //BlankLine
+      
+      //std::fill(minv, minv + g.nodes, INT_MAX);
+      for (int i = 0; i < g.nodes; i++) minv[i] = INT_MAX;
+    }
+  } while (*goagain);
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+  
+  free(parent);
+  free(minv);
+  free(eweight);
+  return runtime;
+}

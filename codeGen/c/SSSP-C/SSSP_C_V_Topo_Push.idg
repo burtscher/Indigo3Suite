@@ -1,0 +1,140 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include <stdatomic.h>
+/*@Race1@*/ typedef data_type shared_t; /*@Race2@*/ typedef _Atomic data_type shared_t; /*@Atomic@*/ typedef _Atomic data_type shared_t;
+#include "indigo_sssp_vertex_c.h"
+/*@Race1@*/ typedef _Atomic bool flag_t; /*@Race2@*/ typedef bool flag_t; /*@Atomic@*/ typedef _Atomic bool flag_t; 
+//BlankLine
+
+/*@IntType@*/ const data_type maxval = INT_MAX; /*@LongType@*/ const data_type maxval = ULLONG_MAX;
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+Determ@*/
+/*@Race1@*/ suppress /*@Race2@*/ /*@Atomic@*/ 
+/*@-Determ@*/
+
+static ECLgraph g;
+static shared_t* dist;
+/*@NonDeterm@*/ /*@Determ@*/ static shared_t* dist_n;
+static flag_t goagain;
+static int threadCount;
+
+//BlankLine
+static void init(const int src, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@NonDeterm@*/ /*@Determ@*/ dist_n[v] = temp;
+    dist[v] = temp;
+  }
+}
+//BlankLine
+
+static int sssp(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    const data_type s = dist[v];
+    //BlankLine
+
+    /*@NoRangeBug@*/ if (s != maxval) { /*@RangeBug@*/
+      bool updated = false;
+      /*@NborNoBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NborBoundsBug@*/ for (int i = beg; i <= end; i++) { 
+        const int dst = g.nlist[i];
+        const data_type new_dist = s + g.eweight[i];
+
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        const data_type d = dist[dst];
+        if (d > new_dist) {
+          dist[dst] = new_dist;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+        /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+        /*@Race1@*/ suppress /*@Race2@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
+        /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+        /*@+Determ@*/ /*@+ReadModifyWrite@*/
+        /*@Race1@*/ suppress /*@Race2@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
+        /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+          updated = true;
+        }
+      }
+      if (updated) {
+        goagain = 1;
+      }
+    /*@NoRangeBug@*/ } /*@RangeBug@*/
+  }
+}
+//BlankLine
+
+static double CPPsssp_vertex(const int src, const ECLgraph l_g, data_type* const l_dist, const int l_threadCount)
+{
+  dist = (shared_t*)l_dist;
+  g = l_g;
+  threadCount = l_threadCount;
+  /*@NonDeterm@*/ /*@Determ@*/ dist_n = (shared_t*)malloc(g.nodes * sizeof(shared_t));
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+
+  init(src, g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  do {
+    iter++;
+    goagain = 0;
+    
+    //BlankLine
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], sssp, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(dist, dist_n);
+  } while (goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ free(iter % 2 ? dist : dist_n);
+  return runtime;
+}

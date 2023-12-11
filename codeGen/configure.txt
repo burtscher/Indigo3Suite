@@ -1,0 +1,17 @@
+/*************************************************************************************************************
+1. All the configure options
+CODE:
+	bug: 		/* all*/
+	pattern: 	/* sssp */
+	option: 	/* (Thread, Warp, Block), (Atomic, NonAtomic, CudaAtomic), (NonPersist, persist), (IntType, LongType), (NonDeterm, Determ), (ReadWrite, ReadModifyWrite) */
+
+2. The keyword 'all' means to select all choices, e.g., option: {all} means to include all the options
+3. You can add '~' before each element in the pattern and option, e.g., {~atomicBug} means not to contain atomicBug
+4. You can add 'only_' before the option, e.g., only_atomicBug means only to contain atomicBug
+***********************************************************************************************************/
+
+CODE:
+    bug:        {nobug}
+    pattern:    {all}
+    option:     {all}
+    dataType:   {IntType, FloatType}

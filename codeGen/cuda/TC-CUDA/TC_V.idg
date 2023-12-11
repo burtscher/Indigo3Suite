@@ -1,0 +1,178 @@
+/*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@GlobalAdd@*/ declare /*@BlockAdd@*/ declare /*@Reduction@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+
+/*@SyncBug@*/ declare /*@NoSyncBug@*/ declare 
+/*@NoPrecedenceBug@*/ declare /*@PrecedenceBug@*/ declare
+/*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
+/*@NoExcessThreadsBug@*/ declare /*@ExcessThreadsBug@*/ declare /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare 
+
+/*@+GlobalAdd@*/ 
+/*@SyncBug@*/ suppress /*@NoSyncBug@*/
+/*@-GlobalAdd@*/ 
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Persist@*/
+
+/*@Atomic@*/ /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/
+
+/*@+IntType@*/
+/*@Atomic@*/ typedef int data_type; /*@CudaAtomic@*/ typedef cuda::atomic<int> data_type; /*@RaceBug@*/ typedef int data_type;
+typedef int basic_t;
+/*@-IntType@*/
+
+/*@+LongType@*/
+/*@Atomic@*/ typedef unsigned long long data_type; /*@CudaAtomic@*/ typedef cuda::atomic<unsigned long long> data_type; /*@RaceBug@*/ typedef unsigned long long data_type;
+typedef unsigned long long basic_t;
+/*@-LongType@*/
+
+/*@+Thread@*/
+/*@GlobalAdd@*/ /*@BlockAdd@*/ /*@Reduction@*/ static const int WS = 32;
+/*@-Thread@*/
+
+/*@+Block@*/
+/*@GlobalAdd@*/ /*@BlockAdd@*/ /*@Reduction@*/ static const int WS = 32;
+/*@-Block@*/
+
+/*@+Warp@*/
+static const int WS = 32;
+/*@-Warp@*/
+
+/*@+SyncBug@*/ 
+/*@GlobalAdd@*/ suppress /*@BlockAdd@*/ /*@Reduction@*/ 
+/*@-SyncBug@*/ 
+
+static const int ThreadsPerBlock = 512;
+/*@NonPersist@*/ /*@Persist@*/ static const int Device = 0;
+
+#include "indigo_tc_vertex_cuda.h"
+
+static __global__ void d_triCounting(data_type* g_count, const int nodes, const int* const __restrict__ nindex, const int* const __restrict__ nlist)
+{
+  /*@+Reduction@*/
+  __shared__ int s_buffer[WS];
+  const int lane = threadIdx.x % WS;
+  const int warp = threadIdx.x / WS;
+  basic_t count = 0;
+  /*@-Reduction@*/
+
+  /*@+BlockAdd@*/
+  __shared__ int count;
+  if (threadIdx.x == 0) count = 0;
+  __syncthreads();
+  /*@-BlockAdd@*/
+
+  /*@NoExcessThreadsBug@*/ const int N = nodes; /*@ExcessThreadsBug@*/ /*@NoBoundsBug@*/ const int N = nodes; /*@BoundsBug@*/ const int N = nodes;
+
+  /*@+NonPersist@*/
+  /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WS; /*@Block@*/ int v = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (v < N) { /*@ExcessThreadsBug@*/{ /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/ /*@+NoBoundsBug@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / 32; /*@Block@*/ int tid = blockIdx.x; 
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / WS)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/
+
+  /*@+Persist@*/ /*@+BoundsBug@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / 32; /*@Block@*/ int tid = blockIdx.x; 
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WS)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
+
+    const int beg1 = nindex[v];
+    const int end1 = nindex[v + 1];
+    int start1 = end1;
+    while ((beg1 < start1) && (v < nlist[start1 - 1])) start1--;
+
+    /*@+NoNbrBoundsBug@*/
+    /*@Thread@*/ for (int j = start1; j < end1; j++) { /*@Warp@*/ for (int j = start1 + threadIdx.x % WS; j < end1; j += WS){ /*@Block@*/ for (int j = start1 + threadIdx.x; j < end1; j += ThreadsPerBlock){
+    /*@-NoNbrBoundsBug@*/
+
+    /*@+NbrBoundsBug@*/
+    /*@Thread@*/ for (int j = start1; j <= end1; j++) { /*@Warp@*/ for (int j = start1 + threadIdx.x % WS; j <= end1; j += WS){ /*@Block@*/ for (int j = start1 + threadIdx.x; j <= end1; j += ThreadsPerBlock){
+    /*@-NbrBoundsBug@*/
+
+      const int u = nlist[j];
+      const int beg2 = nindex[u];
+      const int end2 = nindex[u + 1];
+      int start2 = end2;
+      while ((beg2 < start2) && (u < nlist[start2 - 1])) start2--;
+
+      /*@+GlobalAdd@*/
+      /*@Atomic@*/ atomicAdd(g_count, (basic_t)d_common(j + 1, end1, start2, end2, nlist)); /*@CudaAtomic@*/ (*g_count) += (basic_t)d_common(j + 1, end1, start2, end2, nlist); /*@RaceBug@*/ (*g_count) += (basic_t)d_common(j + 1, end1, start2, end2, nlist);
+      /*@-GlobalAdd@*/
+
+      /*@+BlockAdd@*/
+      atomicAdd_block(&count, (basic_t)d_common(j + 1, end1, start2, end2, nlist));
+      /*@-BlockAdd@*/
+
+      /*@+Reduction@*/
+      count += (basic_t)d_common(j + 1, end1, start2, end2, nlist);
+      /*@-Reduction@*/
+    }
+  }
+  /*@+Reduction@*/
+  // warp reduction
+  count += __shfl_down_sync(~0, count, 16);
+  count += __shfl_down_sync(~0, count, 8);
+  count += __shfl_down_sync(~0, count, 4);
+  count += __shfl_down_sync(~0, count, 2);
+  count += __shfl_down_sync(~0, count, 1);
+  if (lane == 0) s_buffer[warp] = count;
+  /*@SyncBug@*/ /*@NoSyncBug@*/ __syncthreads();
+  // block reduction
+  if (warp == 0) {
+    int val = s_buffer[lane];
+    val += __shfl_down_sync(~0, val, 16);
+    val += __shfl_down_sync(~0, val, 8);
+    val += __shfl_down_sync(~0, val, 4);
+    val += __shfl_down_sync(~0, val, 2);
+    val += __shfl_down_sync(~0, val, 1);
+    /*@Atomic@*/ if (lane == 0) atomicAdd(g_count, val); /*@CudaAtomic@*/ if (lane == 0) (*g_count) += val; /*@RaceBug@*/ if (lane == 0) (*g_count) += val;
+  }
+  /*@-Reduction@*/
+
+  /*@+BlockAdd@*/
+  /*@SyncBug@*/ /*@NoSyncBug@*/ __syncthreads();
+  /*@Atomic@*/ if (threadIdx.x == 0) atomicAdd(g_count, count); /*@CudaAtomic@*/ if (threadIdx.x == 0) (*g_count) += count; /*@RaceBug@*/ if (threadIdx.x == 0) (*g_count) += count;
+  /*@-BlockAdd@*/
+}
+
+static double GPUtc_vertex(basic_t* count, const int nodes, const int* const nindex, const int* const nlist)
+{
+  data_type* d_count;
+  if (cudaSuccess != cudaMalloc((void **)&d_count, sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_goagain\n");
+
+  struct timeval start, end;
+
+  /*@+NonPersist@*/ /*@+NoPrecedenceBug@*/
+  /*@Thread@*/ const int blocks = (nodes + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)nodes * WS + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = nodes;
+  /*@-NonPersist@*/ /*@-NoPrecedenceBug@*/
+
+  /*@+NonPersist@*/ /*@+PrecedenceBug@*/
+  /*@Thread@*/ suppress /*@Warp@*/ const int blocks = (nodes * WS + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ suppress
+  /*@-NonPersist@*/ /*@-PrecedenceBug@*/
+
+
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(Device);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+
+  *count = 0;
+  gettimeofday(&start, NULL);
+  if (cudaSuccess != cudaMemcpy(d_count, count, sizeof(data_type), cudaMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of go_again to device failed\n");
+
+  d_triCounting<<<blocks, ThreadsPerBlock>>>(d_count, nodes, nindex, nlist);
+
+  if (cudaSuccess != cudaMemcpy(count, d_count, sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of go_again from device failed\n");
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+
+  cudaFree(d_count);
+  return (end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
+}

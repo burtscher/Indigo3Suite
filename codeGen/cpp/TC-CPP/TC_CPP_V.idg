@@ -1,0 +1,119 @@
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@GlobalAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ #include <mutex>
+/*@Block@*/ declare /*@Cyclic@*/ declare
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@IntType@*/ typedef int basic_t; /*@LongType@*/ typedef unsigned long long basic_t;
+
+#include "indigo_tc_vertex_cpp.h"
+//BlankLine
+
+/*@+NoRaceBug@*/
+/*@GlobalAdd@*/ typedef std::atomic<basic_t> shared_t; /*@Reduction@*/ typedef basic_t shared_t; /*@Critical@*/ typedef basic_t shared_t;
+/*@-NoRaceBug@*/ 
+/*@+RaceBug@*/ 
+typedef basic_t shared_t;
+/*@-RaceBug@*/ 
+
+/*@+Critical@*/ 
+std::mutex mutex;
+//+BlankLine
+/*@-Critical@*/ 
+
+static void triCounting(shared_t& g_count, const int nodes, const int* const nindex, const int* const nlist, const int threadID, const int threadCount)
+{
+  basic_t count = 0;
+  
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)nodes / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * nodes / threadCount;
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)nodes / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * nodes / threadCount;
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  /*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+  const int top = nodes;
+  /*@-Cyclic@*/
+  
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    
+    const int beg1 = nindex[v];
+    const int end1 = nindex[v + 1];
+    int start1 = end1;
+    //BlankLine
+
+    while ((beg1 < start1) && (v < nlist[start1 - 1])) start1--;
+
+    /*@NoNbrBoundsBug@*/ for (int j = start1; j < end1; j++) { /*@NbrBoundsBug@*/ for (int j = start1; j <= end1; j++) {
+      const int u = nlist[j];
+      const int beg2 = nindex[u];
+      const int end2 = nindex[u + 1];
+      int start2 = end2;
+      while ((beg2 < start2) && (u < nlist[start2 - 1])) start2--;
+      count += (basic_t)common(j + 1, end1, start2, end2, nlist);
+    }
+  }
+
+  /*@+NoRaceBug@*/ 
+  /*@GlobalAdd@*/ g_count += count; /*@Reduction@*/ g_count = count; /*@Critical@*/ 
+  /*@-NoRaceBug@*/ 
+
+  /*@+Critical@*/ /*@+NoRaceBug@*/
+  mutex.lock();
+  g_count += count;
+  mutex.unlock();
+  /*@-Critical@*/ /*@-NoRaceBug@*/
+
+  /*@+RaceBug@*/ 
+  /*@GlobalAdd@*/ g_count += count; /*@Reduction@*/ g_count += count; /*@Critical@*/ g_count += count;
+  /*@-RaceBug@*/ 
+}
+//BlankLine
+
+static double CPUtc_vertex(basic_t &count_orig, const int nodes, const int* const nindex, const int* const nlist, const int threadCount)
+{
+  shared_t count = 0;
+  std::thread threadHandles[threadCount];
+  /*@+Reduction@*/
+  basic_t localSums[threadCount];
+  /*@-Reduction@*/
+  //BlankLine
+
+  timeval start, end;
+  count = 0;
+
+  //BlankLine
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  for (int i = 0; i < threadCount; ++i) {
+    /*@+GlobalAdd@*/
+    threadHandles[i] = std::thread(triCounting, std::ref(count), nodes, nindex, nlist, i, threadCount);
+    /*@-GlobalAdd@*/
+    /*@+Critical@*/
+    threadHandles[i] = std::thread(triCounting, std::ref(count), nodes, nindex, nlist, i, threadCount);
+    /*@-Critical@*/
+    /*@+Reduction@*/ 
+    threadHandles[i] = std::thread(triCounting, std::ref(localSums[i]), nodes, nindex, nlist, i, threadCount);
+    /*@-Reduction@*/
+  }
+  for (int i = 0; i < threadCount; ++i) {
+    threadHandles[i].join();
+    /*@+Reduction@*/
+    count += localSums[i]; //sum reduction
+    /*@-Reduction@*/
+  }
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  //BlankLine
+  
+  count_orig = count;
+  return (end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
+}

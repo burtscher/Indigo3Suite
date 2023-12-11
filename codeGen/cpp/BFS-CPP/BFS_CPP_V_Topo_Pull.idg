@@ -1,0 +1,101 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_bfs_vertex_cpp.h"
+/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@Race@*/ typedef data_type shared_t; 
+typedef std::atomic<bool> flag_t;
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static void init(const int src, shared_t* const dist, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    dist[v] = (v == src) ? 0 : maxval;
+  }
+}
+//BlankLine
+
+static void bfs(const ECLgraph g, shared_t* const dist, flag_t& goagain, const int iter, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    data_type d = dist[v];
+
+    /*@NborBoundsBug@*/ for (int i = beg; i <= end; i++) { /*@NoNborBoundsBug@*/ for (int i = beg; i < end; i++) {
+      const int src = g.nlist[i];
+      const data_type s = dist[src];
+      /*@+NoRangeBug@*/ 
+      /*@NonDeterm@*/ if (s != maxval) { /*@Determ@*/ if (s == iter) {
+      /*@-NoRangeBug@*/ 
+        const data_type new_dist = s + 1;
+        if (new_dist < d) {
+          d = new_dist;
+          goagain = 1;
+        }
+      /*@NoRangeBug@*/ } /*@RangeBug@*/
+    }
+    dist[v] = d;
+  }
+}
+//BlankLine
+
+static double CPPbfs_vertex(const int src, const ECLgraph& g, data_type* const distance, const int threadCount)
+{
+  shared_t* dist = (shared_t*)distance;
+  std::thread threadHandles[threadCount];
+  //BlankLine
+  
+  init(src, dist, g.nodes);
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  // iterate until no more changes
+  flag_t goagain;
+  int iter = 0;
+  do {
+    goagain = 0;
+    //BlankLine
+    
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i] = std::thread(bfs, g, dist, std::ref(goagain), iter, i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    iter++;
+  } while (goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  return runtime;
+}

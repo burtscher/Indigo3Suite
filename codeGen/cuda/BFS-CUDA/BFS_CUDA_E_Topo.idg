@@ -1,0 +1,163 @@
+/*@NonDeterm@*/ declare /*@Determ@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+//BlankLine
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
+
+/*@+IntType@*/
+/*@Atomic@*/ typedef int data_type; /*@CudaAtomic@*/ typedef cuda::atomic<int> data_type; /*@RaceBug@*/ typedef int data_type;
+typedef int basic_t;
+/*@-IntType@*/
+
+/*@+LongType@*/
+/*@Atomic@*/ typedef unsigned long long data_type; /*@CudaAtomic@*/ typedef cuda::atomic<unsigned long long> data_type; /*@RaceBug@*/ typedef unsigned long long data_type;
+typedef unsigned long long basic_t;
+/*@-LongType@*/
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+
+//BlankLine
+static const int ThreadsPerBlock = 512;
+
+#include "indigo_bfs_edge_cuda.h"
+//BlankLine
+
+/*@NonDeterm@*/ static __global__ void init(const int src, data_type* const dist, const int size) /*@Determ@*/ static __global__ void init(const int src, data_type* const dist, data_type* const dist_n, const int size)
+{
+  // initialize arrays
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < size) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@+Determ@*/
+    /*@Atomic@*/ dist_n[v] = temp; /*@CudaAtomic@*/ dist_n[v].store(temp); /*@RaceBug@*/ dist_n[v] = temp;
+    /*@-Determ@*/
+    /*@Atomic@*/ dist[v] = temp; /*@CudaAtomic@*/ dist[v].store(temp); /*@RaceBug@*/ dist[v] = temp;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static __global__ void bfs(const ECLgraph g, const int* const sp, data_type* const dist, flag_t* const goagain) /*@Determ@*/ static __global__ void bfs(const ECLgraph g, const int* const sp, data_type* const dist, data_type* const dist_n, flag_t* const goagain)
+{
+  /*@FieldBug@*/ const int N = g.nodes; /*@NoFieldBug@*/ const int N = g.edges;
+  /*@+NonPersist@*/
+  int e = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  /*@NoExcessThreadsBug@*/ if (e < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
+  for (int e = threadIdx.x + blockIdx.x * ThreadsPerBlock; e < N; e += gridDim.x * ThreadsPerBlock) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/ 
+
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  for (int idx = threadIdx.x + blockIdx.x * ThreadsPerBlock; idx <= N; idx += gridDim.x * ThreadsPerBlock) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
+
+    //BlankLine
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    /*@+NonDeterm@*/
+    /*@Atomic@*/ const data_type s = atomicRead(&dist[src]); /*@CudaAtomic@*/ const data_type s = dist[src].load(); /*@RaceBug@*/ const data_type s = dist[src];
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    /*@Atomic@*/ const data_type s = dist[src]; /*@CudaAtomic@*/ const data_type s = dist[src].load(); /*@RaceBug@*/ const data_type s = dist[src];
+    /*@-Determ@*/
+    //BlankLine
+
+    /*@OverflowBug@*/ { /*@NoOverflowBug@*/ if (s != maxval) {
+      const data_type new_dist = s + 1;
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      /*@Atomic@*/ data_type d = atomicRead(&dist[dst]); /*@CudaAtomic@*/ data_type d = dist[dst].load(); /*@RaceBug@*/ data_type d = dist[dst];
+      /*@NoLivelockBug@*/ if (d > new_dist) { /*@LivelockBug@*/ if (d >= new_dist) {
+      /*@Atomic@*/ atomicWrite(&dist[dst], new_dist); /*@CudaAtomic@*/dist[dst].store(new_dist); /*@RaceBug@*/dist[dst] = new_dist;
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@CudaAtomic@*/ if (dist[dst].fetch_min(new_dist) > new_dist) { /*@RaceBug@*/ suppress
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@CudaAtomic@*/ if (dist_n[dst].fetch_min(new_dist, cuda::memory_order_relaxed) > new_dist) { /*@RaceBug@*/ suppress
+      /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+      /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/*goagain = 1; /*@RaceBug@*/*goagain = 1;
+      }
+    }
+  }
+}
+//BlankLine
+
+static double GPUbfs_edge(const int src, const ECLgraph g, basic_t* const dist, const int* const sp)
+{
+  flag_t* d_goagain;
+  data_type* d_dist;
+  int* d_sp;
+  if (cudaSuccess != cudaMalloc((void **)&d_goagain, sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_goagain\n");
+  if (cudaSuccess != cudaMalloc((void **)&d_dist, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_dist\n");
+  if (cudaSuccess != cudaMalloc((void **)&d_sp, sizeof(int) * g.edges)) {fprintf(stderr, "ERROR: could not allocate d_sp\n"); exit(-1);}
+  /*@+Determ@*/
+  data_type* d_dist_new;
+  if (cudaSuccess != cudaMalloc((void **)&d_dist_new, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_dist_new\n");
+  /*@-Determ@*/
+  cudaMemcpy(d_sp, sp, sizeof(int) * g.edges, cudaMemcpyHostToDevice);
+  //BlankLine
+
+  /*@NonPersist@*/ const int blocks = (g.edges + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Persist@*/
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+  //BlankLine
+
+  struct timeval start, end;
+
+  /*@NonDeterm@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(src, d_dist, g.nodes); /*@Determ@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(src, d_dist, d_dist_new, g.nodes);
+  //BlankLine
+
+  // iterate until no more changes
+  int goagain;
+  int iter = 0;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  do {
+    iter++;
+    goagain = 0;
+    if (cudaSuccess != cudaMemcpy(d_goagain, &goagain, sizeof(int), cudaMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of go_again to device failed\n");
+    //BlankLine
+
+    /*@NonDeterm@*/ bfs<<<blocks, ThreadsPerBlock>>>(g, d_sp, d_dist, d_goagain); /*@Determ@*/ bfs<<<blocks, ThreadsPerBlock>>>(g, d_sp, d_dist, d_dist_new, d_goagain);
+    //BlankLine
+
+    if (cudaSuccess != cudaMemcpy(&goagain, d_goagain, sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of go_again from device failed\n");
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(d_dist, d_dist_new);
+  } while (goagain);
+  //BlankLine
+
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  CheckCuda();
+  /*@NonDeterm@*/ if (cudaSuccess != cudaMemcpy(dist, d_dist, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of dist from device failed\n"); /*@Determ@*/ if (cudaSuccess != cudaMemcpy(dist, d_dist_new, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of dist from device failed\n");
+  //BlankLine
+
+  cudaFree(d_goagain);
+  cudaFree(d_dist);
+  return runtime;
+}

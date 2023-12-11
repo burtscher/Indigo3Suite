@@ -1,0 +1,175 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_vertex_c.h"
+/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@RaceBug@*/ typedef data_type shared_t;
+typedef _Atomic int idx_t;
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+static ECLgraph g;
+static shared_t* label;
+/*@NonDeterm@*/ /*@Determ@*/ static shared_t* label_n;
+static int* wl1;
+static int wl1size;
+static int* wl2;
+static idx_t wl2size;
+static int iter;
+/*@NonDup@*/ static idx_t* edit_time; /*@Dup@*/
+static int threadCount;
+
+//BlankLine
+static void init(const int size)
+{
+  // initialize label array
+  for (int v = 0; v < size; v++) {
+    /*@+Determ@*/
+    label_n[v] = v;
+    /*@-Determ@*/
+    label[v] = v;
+
+    // initialize worklist
+    wl1[v] = v;
+    /*@NonDup@*/ edit_time[v] = 0; /*@Dup@*/
+  }
+  wl1size = size;
+}
+//BlankLine
+
+static int cc_vertex_data(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+  
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int idx = begNode; idx < endNode; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx < top; idx += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int idx = begNode; idx <= endNode; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx <= top; idx += threadCount) { 
+  /*@-BoundsBug@*/ 
+
+    const int src = wl1[idx];
+    const data_type new_label = label[src];
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
+
+    /*@+ReadWrite@*/
+    /*@NonDeterm@*/ bool update = false; /*@Determ@*/ suppress
+    /*@-ReadWrite@*/
+
+    /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug@*/ for (int i = beg; i <= end; i++) {
+      const int dst = g.nlist[i];
+      //BlankLine
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      const data_type d = label[dst];
+      /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+        label[dst] = new_label;
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (atomicMin(&label[dst], new_label) > new_label) { /*@RaceBug@*/ suppress 
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (atomicMin(&label_n[dst], new_label) > new_label) { /*@RaceBug@*/ suppress 
+      /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+        /*@+NonDup@*/
+        if (atomicMax(&edit_time[dst], iter) != iter) {
+          wl2[wl2size++] = dst;
+        }
+        /*@-NonDup@*/
+        /*@+Dup@*/
+        wl2[wl2size++] = dst;
+        /*@-Dup@*/
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        update = true;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+      }
+    }
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@NonDup@*/ if (update) { /*@Dup@*/ suppress
+      /*@NonDup@*/ if (atomicMax(&edit_time[src], iter) != iter) { /*@Dup@*/
+        /*@NonDup@*/ wl2[wl2size++] = src; /*@Dup@*/ 
+      /*@NonDup@*/ } /*@Dup@*/
+      /*@NonDup@*/ } /*@Dup@*/ }
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+    /*@+Determ@*/
+    atomicMin(&label_n[src], new_label);
+    /*@-Determ@*/
+  }
+}
+//BlankLine
+
+static double CPUcc_vertex(const ECLgraph l_g, data_type* const l_label, const int l_threadCount)
+{
+  g = l_g;
+  label = (shared_t*)l_label;
+  threadCount = l_threadCount;
+  /*@NonDeterm@*/ /*@Determ@*/ label_n = (shared_t*)malloc(g.nodes * sizeof(shared_t));
+  const int size = MAX(g.edges, g.nodes);
+  wl1 = (int*)malloc(size * sizeof(int));
+  wl2 = (int*)malloc(size * sizeof(int));
+  /*@NonDup@*/ edit_time = (idx_t*)calloc(g.nodes, sizeof(idx_t)); /*@Dup@*/
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+
+  init(g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  iter = 0;
+  do {
+    iter++;
+    wl2size = 0;
+
+    //BlankLine
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], cc_vertex_data, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    
+    SWAP(wl1, wl2);
+    wl1size = wl2size;
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(label, label_n);
+  } while (wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ free(iter % 2 ? label : label_n);
+  free(wl1);
+  free(wl2);
+  /*@NonDup@*/ free(edit_time); /*@Dup@*/
+  return runtime;
+}

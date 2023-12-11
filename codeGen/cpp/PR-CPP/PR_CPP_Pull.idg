@@ -1,0 +1,110 @@
+
+/*@FloatType@*/ typedef float score_type; /*@DoubleType@*/ typedef double score_type;
+/*@AtomicAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ #include <mutex>
+/*@Block@*/ declare /*@Cyclic@*/ declare
+
+#include "indigo_pr_cpp.h"
+/*@AtomicAdd@*/ typedef std::atomic<double> error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+
+/*@+Critical@*/ 
+//+BlankLine
+std::mutex mutex;
+/*@-Critical@*/ 
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+//BlankLine
+static void errorCalc(const ECLgraph g, error_type& error, score_type* outgoing_contrib, score_type* const scores, const int* const degree, const score_type base_score, const int threadID, const int threadCount)
+{
+  double local_error = 0;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i < endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i < top; i += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i <= endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i <= top; i += threadCount) { 
+  /*@-BoundsBug@*/
+    score_type incoming_total = 0;
+    for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) {
+      const int nei = g.nlist[j];
+      /*@Determin@*/ incoming_total += outgoing_contrib[nei]; /*@NonDetermin@*/ incoming_total += scores[nei] / degree[nei];
+    }
+    score_type old_score = scores[i];
+    scores[i] = base_score + kDamp * incoming_total;
+    
+    local_error += fabs(scores[i] - old_score);
+  }
+  /*@AtomicAdd@*/ atomicAdd(&error, local_error); /*@Reduction@*/ error = local_error; /*@Critical@*/ 
+  /*@+Critical@*/ 
+  mutex.lock();
+  error += local_error;
+  mutex.unlock();
+  /*@-Critical@*/ 
+}
+//BlankLine
+
+static double PR_CPU(const ECLgraph g, score_type *scores, int* degree, const int threadCount)
+{
+  const score_type base_score = (1.0f - kDamp) / (score_type)g.nodes;
+  score_type* outgoing_contrib = (score_type*)malloc(g.nodes * sizeof(score_type));
+  std::thread threadHandles[threadCount];
+  /*@+Reduction@*/
+  double localSums[threadCount];
+  /*@-Reduction@*/
+
+  //BlankLine
+  int iter;
+  timeval start, end;
+  gettimeofday(&start, NULL);  
+  //BlankLine
+  
+  for (iter = 0; iter < MAX_ITER; iter++) {
+    error_type error = 0;    
+    /*@Determin@*/ for (int i = 0; i < g.nodes; i++) outgoing_contrib[i] = scores[i] / degree[i]; /*@NonDetermin@*/
+    
+    for (int i = 0; i < threadCount; ++i) {
+      /*@+AtomicAdd@*/
+      threadHandles[i] = std::thread(errorCalc, g, std::ref(error), outgoing_contrib, scores, degree, base_score, i, threadCount);
+      /*@-AtomicAdd@*/
+      /*@+Critical@*/
+      threadHandles[i] = std::thread(errorCalc, g, std::ref(error), outgoing_contrib, scores, degree, base_score, i, threadCount);
+      /*@-Critical@*/
+      /*@+Reduction@*/
+      threadHandles[i] = std::thread(errorCalc, g, std::ref(localSums[i]), outgoing_contrib, scores, degree, base_score, i, threadCount);
+      /*@-Reduction@*/
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+      /*@+Reduction@*/
+      error += localSums[i]; //sum reduction
+      /*@-Reduction@*/
+    }
+
+    if (error < EPSILON) break;
+  }  
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  if (iter < MAX_ITER) iter++;
+  printf("CPU iterations = %d.\n", iter);
+  //BlankLine
+  
+  free(outgoing_contrib);
+  return runtime;
+}

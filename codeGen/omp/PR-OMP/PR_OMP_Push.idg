@@ -1,0 +1,77 @@
+/*@FloatType@*/ typedef float data_type; /*@DoubleType@*/ typedef double data_type;
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+/*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+/*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
+
+#include "indigo_pr_omp.h"
+
+//BlankLine
+void PR_CPU(const ECLgraph g, data_type *scores, int* degree)
+{
+  const data_type base_score = (1.0f - kDamp) / (data_type)g.nodes;
+  data_type* outgoing_contrib = (data_type*)malloc(g.nodes * sizeof(data_type));
+  data_type* incoming_total = (data_type*)malloc(g.nodes * sizeof(data_type));
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+  
+  int iter;
+  struct timeval start, end;
+  gettimeofday(&start, NULL);  
+  for (iter = 0; iter < MAX_ITER; iter++) {
+    double error = 0;    
+    for (int i = 0; i < g.nodes; i++) {
+      outgoing_contrib[i] = scores[i] / degree[i];
+      incoming_total[i] = 0;
+    }
+    /*@DefaultSched@*/ #pragma omp parallel for /*@DynamicSched@*/ #pragma omp parallel for schedule(dynamic)
+    /*@NoBoundsBug@*/ for (int i = 0; i < N; i++) { /*@BoundsBug@*/ for (int i = 0; i <= N; i++) {
+      const data_type outgoing = outgoing_contrib[i];
+      /*@NoNbrBoundsBug@*/ for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) { /*@NbrBoundsBug@*/ for (int j = g.nindex[i]; j <= g.nindex[i + 1]; j++) {
+        const int nei = g.nlist[j];
+        /*@AtomicRed@*/ #pragma omp atomic /*@CriticalRed@*/ #pragma omp critical  /*@ClauseRed@*/
+        incoming_total[nei] += outgoing;
+      }
+    }
+
+    /*@+AtomicRed@*/
+    /*@DefaultSched@*/ #pragma omp parallel for /*@DynamicSched@*/ #pragma omp parallel for schedule(dynamic)
+    /*@-AtomicRed@*/
+
+    /*@+CriticalRed@*/
+    /*@DefaultSched@*/ #pragma omp parallel for /*@DynamicSched@*/ #pragma omp parallel for schedule(dynamic)
+    /*@-CriticalRed@*/
+    
+    /*@+ClauseRed@*/ /*@+NoRaceBug@*/
+    /*@DefaultSched@*/ #pragma omp parallel for reduction(+: error) /*@DynamicSched@*/ #pragma omp parallel for schedule(dynamic) reduction(+: error)   
+    /*@-ClauseRed@*/ /*@-NoRaceBug@*/
+
+    /*@+ClauseRed@*/ /*@+RaceBug@*/
+    /*@DefaultSched@*/ #pragma omp parallel for /*@DynamicSched@*/ #pragma omp parallel for schedule(dynamic)  
+    /*@-ClauseRed@*/ /*@-RaceBug@*/
+
+    for (int i = 0; i < g.nodes; i++) {
+      data_type incoming = incoming_total[i];     
+      data_type old_score = scores[i];
+      const data_type value = base_score + kDamp * incoming;
+      scores[i] = value;
+      /*@+NoRaceBug@*/
+      /*@AtomicRed@*/ #pragma omp atomic /*@CriticalRed@*/ #pragma omp critical /*@ClauseRed@*/
+      /*@-NoRaceBug@*/
+
+      /*@+RaceBug@*/
+      /*@AtomicRed@*/ /*@CriticalRed@*/ /*@ClauseRed@*/
+      /*@-RaceBug@*/
+
+      error += fabs(value - old_score);
+    }
+    if (error < EPSILON) break;
+  }  
+  gettimeofday(&end, NULL);
+  
+  if (iter < MAX_ITER) iter++;
+  const float runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("CPU iterations = %d.\n", iter);
+  printf("CPU runtime: %.6fs\n\n", runtime);
+  printf("Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / runtime);
+
+}

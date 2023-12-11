@@ -1,0 +1,79 @@
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@AtomicAdd@*/ declare /*@CriticalRed@*/ declare /*@ClauseRed@*/ declare
+/*@Default@*/ declare /*@Dynamic@*/ declare
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+
+#include "indigo_tc_edge_omp.h"
+//BlankLine
+
+static void triCounting(data_type* g_count, const int edges, const int* const nindex, const int* const nlist, const int* const sp)
+{
+  /*@+AtomicAdd@*/ 
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@-AtomicAdd@*/
+
+  /*@+CriticalRed@*/ 
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@-CriticalRed@*/
+  
+  /*@+ClauseRed@*/ /*@+NoRaceBug@*/
+  data_type result = 0;
+  /*@Default@*/ #pragma omp parallel for reduction(+: result) /*@Dynamic@*/ #pragma omp parallel for reduction(+: result) schedule(dynamic)
+  /*@-ClauseRed@*/ /*@-NoRaceBug@*/
+
+  /*@+ClauseRed@*/ /*@+RaceBug@*/
+  data_type result = 0;
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@-ClauseRed@*/ /*@-RaceBug@*/
+
+  /*@NoBoundsBug@*/ for (int e = 0; e < edges; e++) { /*@BoundsBug@*/ for (int e = 0; e <= edges; e++) {
+    data_type count = 0;
+    const int src = sp[e];
+    const int dst = nlist[e];
+
+    if (src > dst) {
+      const int beg1 = nindex[dst];
+      const int end1 = nindex[dst + 1];
+
+      /*@NoNbrBoundsBug@*/ for (int i = beg1; i < end1 && nlist[i] < dst; i++) { /*@NbrBoundsBug@*/ for (int i = beg1; i <= end1 && nlist[i] < dst; i++) {
+        const int u = nlist[i];
+        int beg2 = nindex[src];
+        int end2 = nindex[src + 1];
+        if (find(u, beg2, end2, nlist)) count++;
+      }
+      /*@+NoRaceBug@*/
+      /*@AtomicAdd@*/ #pragma omp atomic /*@CriticalRed@*/ #pragma omp critical /*@ClauseRed@*/ 
+      /*@-NoRaceBug@*/
+
+      /*@+RaceBug@*/
+      /*@AtomicAdd@*/ /*@CriticalRed@*/ /*@ClauseRed@*/ 
+      /*@-RaceBug@*/
+
+      /*@AtomicAdd@*/ (*g_count) += count; /*@CriticalRed@*/ (*g_count) += count; /*@ClauseRed@*/ result += count;
+    }
+  }
+  /*@+ClauseRed@*/
+  *g_count = result;
+  /*@-ClauseRed@*/
+}
+//BlankLine
+
+static double CPUtc_edge(data_type* count, const int edges, const int* const nindex, const int* const nlist, const int* const sp)
+{
+  struct timeval start, end;
+  *count = 0;
+  
+  //BlankLine
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  triCounting(count, edges, nindex, nlist, sp);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  //BlankLine
+  
+  return (end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
+}

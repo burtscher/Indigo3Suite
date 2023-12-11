@@ -1,0 +1,144 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_edge_omp.h"
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/ static void init(data_type* const label, const int size, const ECLgraph g, int* const wl1, int* wlsize, int* const time) /*@Determ@*/ static void init(data_type* const label, data_type* const label_n, const int size, const ECLgraph g, int* const wl1, int* wlsize, int* const time)
+{
+  int idx = 0;
+  // initialize label array
+  for (int v = 0; v < size; v++) {
+    /*@+Determ@*/
+    label_n[v] = v;
+    /*@-Determ@*/
+    label[v] = v;
+    //BlankLine
+
+    for (int i = g.nindex[v]; i < g.nindex[v + 1]; i++) {
+      wl1[idx] = i;
+      idx++;
+    }
+  }
+  *wlsize = idx;
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void cc_edge_data(const ECLgraph g, const int* const sp, data_type* const label, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time) /*@Determ@*/static void cc_edge_data(const ECLgraph g, const int* const sp, data_type* const label, data_type* const label_n, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx < wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx < g.nodes; idx ++) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx <= wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx <= g.nodes; idx ++) { 
+  /*@-BoundsBug@*/
+
+    const int e = wl1[idx];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@Atomic@*/ const data_type new_label = atomicRead(&label[src]); /*@RaceBug@*/ const data_type new_label = label[src];
+    /*@NoMixSyncBug@*/ /*@MixSyncBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ data_type new_label; /*@MixSyncBug@*/ const data_type new_label = atomicRead(&label[src]);
+    /*@NoMixSyncBug@*/ #pragma omp critical /*@MixSyncBug@*/
+    /*@NoMixSyncBug@*/ new_label = label[src]; /*@MixSyncBug@*/
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ const data_type new_label = label[src]; /*@MixSyncBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@Atomic@*/ data_type d = atomicRead(&label[dst]); /*@RaceBug@*/ data_type d = label[dst];
+    /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+    /*@Atomic@*/ atomicWrite(&label[dst], new_label); /*@RaceBug@*/label[dst] = new_label;
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@Atomic@*/ if (critical_min(&label[dst], new_label) > new_label) { /*@RaceBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@Atomic@*/ if (critical_min(&label_n[dst], new_label) > new_label) { /*@RaceBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+    /*@+NonDeterm@*/
+      /*@ReadWrite@*/ if (critical_max(&time[e], iter) != iter) { /*@ReadModifyWrite@*/
+        /*@ReadWrite@*/ wl2[fetch_and_add(wl2size)] = e; /*@ReadModifyWrite@*/
+      /*@ReadWrite@*/ } /*@ReadModifyWrite@*/
+    /*@-NonDeterm@*/
+      for (int j = g.nindex[dst]; j < g.nindex[dst + 1]; j++) {
+        if (critical_max(&time[j], iter) != iter) {
+          wl2[fetch_and_add(wl2size)] = j;
+        }
+      }
+    }
+
+    /*@+Determ@*/
+    /*@Atomic@*/ critical_min(&label_n[src], new_label); /*@RaceBug@*/ label_n[src] = new_label;
+    /*@-Determ@*/
+  }
+}
+//BlankLine
+
+static double CPUcc_edge(const ECLgraph g, data_type* label, const int* const sp)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* label_new = malloc(sizeof(data_type) * g.nodes);
+  const int size = MAX(g.edges, g.nodes);
+  int* wl1 = malloc(sizeof(int) * size);
+  int* wl2 = malloc(sizeof(int) * size);
+  int* time = malloc(sizeof(int) * g.edges);
+  int* wl1size = malloc(sizeof(int));
+  int *wl2size = malloc(sizeof(int));
+  //BlankLine
+
+  /*@NoUninitializedBug@*/ for (int i = 0; i < g.edges; i++) time[i] = 0; /*@UninitializedBug@*/ for (int i = 0; i < g.nodes; i++) time[i] = 0;
+
+  //BlankLine
+  struct timeval start, end;
+
+  /*@NonDeterm@*/ init(label, g.nodes, g, wl1, wl1size, time); /*@Determ@*/ init(label, label_new, g.nodes, g, wl1, wl1size, time);
+
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  do {
+    iter++;
+    *wl2size = 0;
+
+    //BlankLine
+    /*@NonDeterm@*/ cc_edge_data(g, sp, label, wl1, *wl1size, wl2, wl2size, iter, time); /*@Determ@*/ cc_edge_data(g, sp, label, label_new, wl1, *wl1size, wl2, wl2size, iter, time);
+    //BlankLine
+    SWAP(wl1, wl2);
+    *wl1size = *wl2size;
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(label, label_new);
+  } while (*wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ free(iter % 2 ? label : label_new);
+  free(wl1);
+  free(wl2);
+  free(wl1size);
+  free(wl2size);
+  free(time);
+  return runtime;
+}

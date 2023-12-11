@@ -1,0 +1,288 @@
+/*@IntType@*/ typedef unsigned int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_mis_edge_cpp.h"
+/*@Atomic@*/ typedef std::atomic<unsigned char> shared_t; /*@RaceBug@*/ typedef unsigned char shared_t;
+typedef std::atomic<int> idx_t;
+//BlankLine
+
+/*@Atomic@*/ /*@Race@*/ 
+/*@NonDeterm@*/ /*@CopyDeterm@*/ /*@MergeDeterm@*/
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+NonDeterm@*/ 
+static void init(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, bool* const lost, int* const wl1, idx_t& wlsize) 
+/*@-NonDeterm@*/ 
+/*@+CopyDeterm@*/ 
+static void init(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, int* const wl1, idx_t& wlsize) 
+/*@-CopyDeterm@*/ 
+/*@+MergeDeterm@*/ 
+static void init(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, int* const wl1, idx_t& wlsize) 
+/*@-MergeDeterm@*/
+{
+  // initialize arrays
+  for (int v = 0; v < g.nodes; v++)
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ status_n[v] = undecided; /*@MergeDeterm@*/ status_n[v] = undecided;
+    lost[v] = false;
+  }
+  
+  wlsize = 0;
+  for (int e = 0; e < g.edges; e++)
+  {
+    // initialize worklist
+    if (sp[e] < g.nlist[e]) {
+      wl1[wlsize++] = e;
+    }
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/ 
+static void mis(const ECLgraph& g, const int* const sp, const data_type* const priority, shared_t* const status, bool* const lost, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int threadID, const int threadCount) 
+/*@-NonDeterm@*/ 
+/*@+MergeDeterm@*/ 
+static void mis(const ECLgraph& g, const int* const sp, const data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int threadID, const int threadCount) 
+/*@-MergeDeterm@*/
+/*@+CopyDeterm@*/ 
+static void mis(const ECLgraph& g, const int* const sp, const data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int threadID, const int threadCount)
+/*@-CopyDeterm@*/
+{
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begEdge = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endEdge = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endEdge = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+  
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int w = begEdge; w < endEdge; w++) { /*@Cyclic@*/ for (int w = threadID; w < top; w += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int w = begEdge; w <= endEdge; w++) { /*@Cyclic@*/ for (int w = threadID; w <= top; w += threadCount) { 
+  /*@-BoundsBug@*/ 
+  
+    int e = wl1[w];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    
+    // if one is included, exclude the other
+    if (status[src] == included) {
+      /*@NonDeterm@*/ status[dst] = excluded; /*@CopyDeterm@*/ status_n[dst] = excluded; /*@MergeDeterm@*/ status_n[dst] = excluded;
+    }
+    else if (status[dst] == included) {
+      /*@NonDeterm@*/ status[src] = excluded; /*@CopyDeterm@*/ status_n[src] = excluded; /*@MergeDeterm@*/ status_n[src] = excluded;
+    }
+    // if neither included nor excluded -> mark lower priority node as lost
+    else if (status[src] != excluded && status[dst] != excluded) {
+      if (priority[src] < priority[dst]) {
+        lost[src] = true;
+      } else {
+        lost[dst] = true;
+      }
+    }
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/ 
+static void mis_vertex_pass(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, bool* const lost, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int threadID, const int threadCount)
+/*@-NonDeterm@*/ 
+/*@+MergeDeterm@*/ 
+static void mis_vertex_pass(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int threadID, const int threadCount)
+/*@-MergeDeterm@*/
+/*@+CopyDeterm@*/ 
+static void mis_vertex_pass(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int threadID, const int threadCount)
+/*@-CopyDeterm@*/
+{
+  /*@+Block@*/
+  const int begEdge = threadID * (long)wl1size / threadCount;
+  const int endEdge = (threadID + 1) * (long)wl1size / threadCount;
+  /*@-Block@*/
+  /*@+Cyclic@*/
+  const int top = wl1size;
+  /*@-Cyclic@*/
+  //BlankLine
+  
+  // go over all vertexes
+  /*@Block@*/ for (int w = begEdge; w < endEdge; w++) { /*@Cyclic@*/ for (int w = threadID; w < top; w += threadCount) { 
+    
+    const int e = wl1[w];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    
+    // if src node won
+    if (lost[src] == false) { 
+      if (status[src] == undecided) {
+      // and is undecided -> include
+        /*@NonDeterm@*/ status[src] = included; /*@CopyDeterm@*/ status_n[src] = included; /*@MergeDeterm@*/ status_n[src] = included;
+      }
+    }
+    // if dst node won
+    if (lost[dst] == false) { 
+      if (status[dst] == undecided) {  
+      // and is undecided -> include
+        /*@NonDeterm@*/ status[dst] = included; /*@CopyDeterm@*/ status_n[dst] = included; /*@MergeDeterm@*/ status_n[dst] = included;
+      }
+    }
+    if (status[src] == undecided || status[dst] == undecided) { 
+      // if either node is still undecided, keep edge in WL
+      wl2[wl2size++] = e;
+    }
+  }
+}
+//BlankLine
+
+static void mis_last_pass(shared_t* const status, const int size, const int threadID, const int threadCount)
+{
+  /*@+Block@*/
+  const int begNode = threadID * (long)size / threadCount;
+  const int endNode = (threadID + 1) * (long)size / threadCount;
+  /*@-Block@*/
+  /*@+Cyclic@*/
+  const int top = size;
+  /*@-Cyclic@*/
+  //BlankLine
+  
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+    if (status[v] == undecided) {
+      status[v] = included;
+    }
+  }
+}
+//BlankLine
+
+static double CPPmis_edge(const ECLgraph& g, const int* const sp, data_type* const priority, unsigned char* const status_orig, const int threadCount)
+{
+  shared_t* status = (shared_t*)status_orig;
+  /*@NonDeterm@*/ /*@CopyDeterm@*/ shared_t* status_new = new shared_t [g.nodes]; /*@MergeDeterm@*/ shared_t* status_new = new shared_t [g.nodes]; 
+  bool* lost = new bool [g.nodes];
+  const int size = std::max(g.edges, g.nodes);
+  int* wl1 = new int [size];
+  int* wl2 = new int [size];
+  idx_t wl1size;
+  idx_t wl2size;
+  std::thread threadHandles[threadCount];
+  //BlankLine
+
+  /*@+NonDeterm@*/ 
+  init(g, sp, priority, status, lost, wl1, wl1size); 
+  /*@-NonDeterm@*/
+  /*@+CopyDeterm@*/ 
+  init(g, sp, priority, status, status_new, lost, wl1, wl1size);
+  /*@-CopyDeterm@*/ 
+  /*@+MergeDeterm@*/ 
+  init(g, sp, priority, status, status_new, lost, wl1, wl1size);
+  /*@-MergeDeterm@*/ 
+  
+  //BlankLine
+  timeval beg, end;
+  gettimeofday(&beg, NULL);
+  //BlankLine
+
+  int iter = 0;
+  do {
+    iter++;
+    wl2size = 0;
+    
+    //BlankLine
+    // edge pass
+    for (int i = 0; i < threadCount; ++i) {
+      /*@+NonDeterm@*/ 
+      threadHandles[i] = std::thread(mis, g, sp, priority, status, lost, wl1, wl1size.load(), wl2, std::ref(wl2size), i, threadCount); 
+      /*@-NonDeterm@*/ 
+      /*@+CopyDeterm@*/ 
+      threadHandles[i] = std::thread(mis, g, sp, priority, status, status_new, lost, wl1, wl1size.load(), wl2, std::ref(wl2size), i, threadCount); 
+      /*@-CopyDeterm@*/ 
+      /*@+MergeDeterm@*/ 
+      threadHandles[i] = std::thread(mis, g, sp, priority, status, status_new, lost, wl1, wl1size.load(), wl2, std::ref(wl2size), i, threadCount);
+      /*@-MergeDeterm@*/ 
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ std::copy((unsigned char*)status_new, (unsigned char*)status_new + g.nodes, (unsigned char*)status); /*@MergeDeterm@*/ 
+    /*@+MergeDeterm@*/
+    // merge pass
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i] = std::thread(updateFromWorklist, g, sp, (unsigned char*)status, (unsigned char*)status_new, wl1, wl1size.load(), i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    /*@-MergeDeterm@*/
+    
+    // vertex pass
+    for (int i = 0; i < threadCount; ++i) {
+      /*@+NonDeterm@*/
+      threadHandles[i] = std::thread(mis_vertex_pass, g, sp, priority, status, lost, wl1, wl1size.load(), wl2, std::ref(wl2size), i, threadCount);
+      /*@-NonDeterm@*/ 
+      /*@+MergeDeterm@*/ 
+      threadHandles[i] = std::thread(mis_vertex_pass, g, sp, priority, status, status_new, lost, wl1, wl1size.load(), wl2, std::ref(wl2size), i, threadCount);
+      /*@-MergeDeterm@*/
+      /*@+CopyDeterm@*/ 
+      threadHandles[i] = std::thread(mis_vertex_pass, g, sp, priority, status, status_new, lost, wl1, wl1size.load(), wl2, std::ref(wl2size), i, threadCount);
+      /*@-CopyDeterm@*/
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ std::copy((unsigned char*)status_new, (unsigned char*)status_new + g.nodes, (unsigned char*)status); /*@MergeDeterm@*/ 
+    /*@+MergeDeterm@*/
+    // merge pass
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i] = std::thread(updateFromWorklist, g, sp, (unsigned char*)status, (unsigned char*)status_new, wl1, wl1size.load(), i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    /*@-MergeDeterm@*/
+    
+    std::fill(lost, lost + g.nodes, false);
+    std::swap(wl1, wl2);
+    wl1size = wl2size.load();
+    
+  } while (wl1size > 0);
+
+  //BlankLine
+  for (int i = 0; i < threadCount; ++i) {
+    threadHandles[i] = std::thread(mis_last_pass, status, g.nodes, i, threadCount);
+  }
+  for (int i = 0; i < threadCount; ++i) {
+    threadHandles[i].join();
+  }
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec - beg.tv_sec + (end.tv_usec - beg.tv_usec) / 1000000.0;
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@CopyDeterm@*/ delete [] status_new; /*@MergeDeterm@*/ delete [] status_new;
+  delete [] lost;
+  delete [] wl1;
+  delete [] wl2;
+  return runtime;
+}

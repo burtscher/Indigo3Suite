@@ -1,0 +1,143 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_bfs_vertex_cpp.h"
+/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@Race@*/ typedef data_type shared_t;
+typedef std::atomic<int> idx_t;
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@NonDeterm@*/ static void init(const int src, shared_t* const dist, const int size, const ECLgraph g, int* const wl1, idx_t* const wlsize) /*@Determ@*/ static void init(const int src, shared_t* const dist, shared_t* const dist_n, const int size, const ECLgraph g, int* const wl1, idx_t* const wlsize)
+{
+  // initialize dist array
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@NonDeterm@*/ /*@Determ@*/ dist_n[v] = temp;
+    dist[v] = temp;
+  }
+  // initialize worklist
+  int idx = 0;
+  for (int i = g.nindex[src]; i < g.nindex[src + 1]; i++) {
+    wl1[idx] = g.nlist[i];
+    idx++;
+  }
+  *wlsize = idx;
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void bfs_vertex_data(const ECLgraph g, shared_t* const dist, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int iter, idx_t* const time, const int threadID, const int threadCount) /*@Determ@*/ static void bfs_vertex_data(const ECLgraph g, shared_t* const dist, shared_t* const dist_n, const int* const wl1, const int wl1size, int* const wl2, idx_t& wl2size, const int iter, idx_t* const time, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int idx = begNode; idx < endNode; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx < top; idx += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int idx = begNode; idx <= endNode; idx++) { /*@Cyclic@*/ for (int idx = threadID; idx <= top; idx += threadCount) { 
+  /*@-BoundsBug@*/
+
+    const int v = wl1[idx];
+    data_type d = dist[v];
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    bool updated = false;
+
+    /*@NoNborBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NborBoundsBug@*/ for (int i = beg; i <= end; i++) {
+      const int src = g.nlist[i];
+      const data_type s = dist[src];
+      
+      /*@NoRangeBug@*/ if (s != maxval) { /*@RangeBug@*/
+        const data_type new_dist = s + 1;
+        if (d > new_dist) {
+          d = new_dist;
+          updated = true;
+        }
+      /*@NoRangeBug@*/ } /*@RangeBug@*/
+      /*@NonDeterm@*/ /*@Determ@*/ atomicMin(&dist_n[src], s);
+    }
+
+    if (updated) {
+      /*@+NonDeterm@*/
+      /*@Atomic@*/ dist[v] = d; /*@Race@*/ suppress;
+      /*@-NonDeterm@*/
+
+      /*@+Determ@*/
+      dist_n[v] = d;
+      /*@-Determ@*/
+    
+      for (int j = beg; j < end; j++) {
+        const int n = g.nlist[j];
+        if (atomicMax(&time[n], iter) != iter) {
+          wl2[wl2size++] = n;
+        }
+      }
+    }
+  }
+}
+
+static double CPPbfs_vertex(const int src, const ECLgraph& g, data_type* const distance, const int threadCount)
+{
+  shared_t* dist = (shared_t*)distance;
+  /*@NonDeterm@*/ /*@Determ@*/ shared_t* dist_new = new shared_t [g.nodes];
+  const int size = std::max(g.edges, g.nodes);
+  int* wl1 = new int [size];
+  int* wl2 = new int [size];
+  idx_t* time = new idx_t [g.nodes];
+  idx_t wl1size = 0;
+  idx_t wl2size;
+  std::thread threadHandles[threadCount];
+  //BlankLine
+  
+  /*@NonDeterm@*/ init(src, dist, g.nodes, g, wl1, &wl1size); /*@Determ@*/ init(src, dist, dist_new, g.nodes, g, wl1, &wl1size);
+  std::fill(time, time + g.nodes, 0);
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  do {
+    iter++;
+    wl2size = 0;
+
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(bfs_vertex_data, g, dist, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, time, i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(bfs_vertex_data, g, dist, dist_new, wl1, wl1size.load(), wl2, std::ref(wl2size), iter, time, i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    std::swap(wl1, wl2);
+    wl1size = wl2size.load();
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(dist, dist_new);
+  } while (wl1size > 0);
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+  
+  /*@NonDeterm@*/ /*@Determ@*/ delete [] (iter % 2 ? dist : dist_new);
+  delete [] wl1;
+  delete [] wl2;
+  delete [] time;
+  return runtime;
+}

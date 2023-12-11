@@ -1,0 +1,163 @@
+/*@IntType@*/ typedef unsigned int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_mis_vertex_c.h"
+/*@Atomic@*/ typedef _Atomic unsigned char shared_t; /*@RaceBug@*/ typedef unsigned char shared_t;
+typedef _Atomic bool flag_t;
+//BlankLine
+
+/*@Block@*/ /*@Cyclic@*/
+/*@Atomic@*/ /*@RaceBug@*/ 
+/*@NonDeterm@*/ /*@Determ@*/
+/*@NoFieldBug@*/ /*@FieldBug@*/
+/*@NoBoundsBug@*/ /*@BoundsBug@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static ECLgraph g;
+static data_type* priority;
+static shared_t* status;
+/*@NonDeterm@*/ /*@Determ@*/ static shared_t* status_n;
+static flag_t goagain;
+static int threadCount;
+
+//BlankLine
+static void init(const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++)
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
+    /*@NoLivelockBug@*/ /*@LivelockBug@*/ priority[v] = priority[v] % 100;
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
+  }
+}
+//BlankLine
+
+/*@+Determ@*/
+static int updateUndecided(void* arg)
+{
+  const long threadID = (long)arg;
+  const int begNode = threadID * (long)g.nodes / threadCount;
+  const int endNode = (threadID + 1) * (long)g.nodes / threadCount;
+  
+  for (int i = begNode; i < endNode; ++i)
+  {
+    if (status[i] == undecided)
+      status[i] = status_n[i];
+  }
+}
+//+BlankLine
+/*@-Determ@*/
+
+static int mis(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    if (status[v] == undecided) {
+      int i;
+      // try to find a non-excluded neighbor whose priority is higher
+      for (i = g.nindex[v]; i < g.nindex[v + 1]; i++) {
+        /*@+NoLivelockBug@*/ 
+        if ((status[g.nlist[i]] != excluded) && ((priority[g.nlist[i]] > priority[v]) || ((priority[v] == priority[g.nlist[i]]) && (v < g.nlist[i])))) {
+        /*@-NoLivelockBug@*/ 
+        /*@+LivelockBug@*/ 
+        if ((status[g.nlist[i]] != excluded) && (priority[g.nlist[i]] >= priority[v])) {
+        /*@-LivelockBug@*/ 
+          // found such a neighbor -> check if neighbor is included
+          if (status[g.nlist[i]] == included) {
+            // found included neighbor -> exclude self
+            /*@NonDeterm@*/ status[v] = excluded; /*@CopyDeterm@*/ status_n[v] = excluded; /*@Determ@*/ status_n[v] = excluded;
+          } else { 
+            goagain = true;
+          }
+          break;
+        }
+      }
+      if (i >= g.nindex[v + 1]) {
+        // no such neighbor -> v is "included"
+        /*@NonDeterm@*/ status[v] = included; /*@Determ@*/ status_n[v] = included; 
+      }
+    }
+  }
+}
+//BlankLine
+
+static double CPPmis_vertex(const ECLgraph l_g, data_type* const l_priority, unsigned char* const l_status, const int l_threadCount)
+{
+  g = l_g;
+  priority = l_priority;
+  status = (shared_t*)l_status;
+  threadCount = l_threadCount;
+  /*@NonDeterm@*/ /*@Determ@*/ status_n = (shared_t*)malloc(g.nodes * sizeof(shared_t)); 
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+
+  init(g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  int iter = 0;
+  do {
+    iter++;
+    goagain = false;
+    
+    //BlankLine
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], mis, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    
+    /*@+Determ@*/
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], updateUndecided, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    /*@-Determ@*/
+    
+  } while (goagain);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ free(status_n);  //delete [] ((iter % 2) ? status_n : status);
+  return runtime;
+}

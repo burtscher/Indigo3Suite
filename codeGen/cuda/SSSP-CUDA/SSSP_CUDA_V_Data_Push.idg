@@ -1,0 +1,275 @@
+/*@NonDeterm@*/ declare /*@Determ@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+/*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
+/*@NonDup@*/ declare /*@Dup@*/ declare
+
+/*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
+/*@NoExcessThreadsBug@*/ declare /*@ExcessThreadsBug@*/ declare /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+
+/*@+ReadWrite@*/
+/*@NonDup@*/ /*@Dup@*/ suppress
+/*@-ReadWrite@*/
+
+/*@+ReadWrite@*/
+/*@NonDeterm@*/ /*@Determ@*/ suppress
+/*@-ReadWrite@*/
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@+NonDeterm@*/ /*@+ReadWrite@*/
+/*@NonDup@*/ /*@Dup@*/ suppress
+/*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
+
+/*@+IntType@*/
+/*@Atomic@*/ typedef int data_type; /*@CudaAtomic@*/ typedef cuda::atomic<int> data_type; /*@RaceBug@*/ typedef int data_type;
+typedef int basic_t;
+/*@-IntType@*/
+
+/*@+LongType@*/
+/*@Atomic@*/ typedef unsigned long long data_type; /*@CudaAtomic@*/ typedef cuda::atomic<unsigned long long> data_type; /*@RaceBug@*/ typedef unsigned long long data_type;
+typedef unsigned long long basic_t;
+/*@-LongType@*/
+
+
+static const int ThreadsPerBlock = 512;
+/*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/
+//BlankLine
+
+#include "indigo_sssp_vertex_cuda.h"
+//BlankLine
+
+/*@NonDeterm@*/ static __global__ void init(const int src, data_type* const dist, const int size, const ECLgraph g, int* const wl1, int* const wlsize) /*@Determ@*/ static __global__ void init(const int src, data_type* const dist, data_type* const dist_n, const int size, const ECLgraph g, int* const wl1, int* const wlsize)
+{
+  // initialize dist array
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < size) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@+Determ@*/
+    /*@Atomic@*/ dist_n[v] = temp; /*@CudaAtomic@*/ dist_n[v].store(temp); /*@RaceBug@*/ dist_n[v] = temp;
+    /*@-Determ@*/
+    /*@Atomic@*/ dist[v] = temp; /*@CudaAtomic@*/ dist[v].store(temp); /*@RaceBug@*/ dist[v] = temp;
+  }
+  // initialize worklist
+  if (v == 0) {
+    wl1[0] = src;
+    *wlsize = 1;
+  }
+}
+//BlankLine
+
+/*@+NonDup@*/
+/*@NonDeterm@*/ static __global__ void sssp_vertex_data(const ECLgraph g, data_type* const dist, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size, const int iter, int* const time) /*@Determ@*/ static __global__ void sssp_vertex_data(const ECLgraph g, data_type* const dist, data_type* const dist_n, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size, const int iter, int* const time)
+/*@-NonDup@*/
+/*@+Dup@*/
+/*@NonDeterm@*/ static __global__ void sssp_vertex_data(const ECLgraph g, data_type* const dist, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size) /*@Determ@*/ static __global__ void sssp_vertex_data(const ECLgraph g, data_type* const dist, data_type* const dist_n, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size)
+/*@-Dup@*/
+{
+  /*@NoFieldBug@*/ int N = wl1size; /*@FieldBug@*/ int N = g.nodes;
+  /*@+NonPersist@*/
+  /*@Thread@*/ int idx = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int idx = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int idx = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (idx < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@-Persist@*/
+
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
+  /*@Thread@*/ for (int idx = tid; idx < N; idx += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int idx = tid; idx < N; idx += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int idx = tid; idx < N; idx += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/
+
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  /*@Thread@*/ for (int idx = tid; idx < N; idx += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int idx = tid; idx < N; idx += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int idx = tid; idx < N; idx += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
+
+    const int src = wl1[idx];
+    /*@+NonDeterm@*/
+    /*@Atomic@*/ const data_type s = atomicRead(&dist[src]); /*@CudaAtomic@*/ const data_type s = dist[src].load(); /*@RaceBug@*/ const data_type s = dist[src];
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    /*@Atomic@*/ const data_type s = dist[src]; /*@CudaAtomic@*/ const data_type s = dist[src].load(); /*@RaceBug@*/ const data_type s = dist[src];
+    /*@-Determ@*/
+
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
+    //BlankLine
+
+    if (s != maxval) {
+      /*@+ReadWrite@*/ /*@+NonDeterm@*/
+      /*@Thread@*/ bool updated = false; /*@Warp@*/ __shared__ bool updated[ThreadsPerBlock / WarpSize]; /*@Block@*/ __shared__ bool updated;
+      /*@Thread@*/ /*@Warp@*/ if (threadIdx.x % WarpSize == 0) updated[threadIdx.x / WarpSize] = false; /*@Block@*/ if (threadIdx .x == 0) updated = false;
+      /*@Thread@*/ /*@Warp@*/ __syncwarp(); /*@Block@*/ __syncthreads();
+      /*@-ReadWrite@*/ /*@-NonDeterm@*/
+
+      /*@+NoNbrBoundsBug@*/
+      /*@Thread@*/ for (int i = beg; i < end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % WarpSize; i < end; i += WarpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i < end; i += ThreadsPerBlock) {
+      /*@-NoNbrBoundsBug@*/
+      /*@+NbrBoundsBug@*/
+      /*@Thread@*/ for (int i = beg; i <= end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % WarpSize; i <= end; i += WarpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i <= end; i += ThreadsPerBlock) {
+      /*@-NbrBoundsBug@*/
+        const int dst = g.nlist[i];
+        const data_type new_dist = s + g.eweight[i];
+        //BlankLine
+
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        /*@Atomic@*/ const data_type d = atomicRead(&dist[dst]); /*@CudaAtomic@*/ const data_type d = dist[dst].load(); /*@RaceBug@*/ const data_type d = dist[dst];
+        /*@NoLivelockBug@*/ if (d > new_dist) { /*@LivelockBug@*/ if (d >= new_dist) {
+        /*@Atomic@*/ atomicWrite(&dist[dst], new_dist); /*@CudaAtomic@*/ dist[dst].store(new_dist); /*@RaceBug@*/ dist[dst] = new_dist;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+        /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@CudaAtomic@*/ if (dist[dst].fetch_min(new_dist) > new_dist) { /*@RaceBug@*/ suppress
+        /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+        /*@+Determ@*/ /*@+ReadModifyWrite@*/
+        /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@CudaAtomic@*/ if (dist_n[dst].fetch_min(new_dist) > new_dist) { /*@RaceBug@*/ suppress
+        /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+          /*@+NonDup@*/
+            if (atomicMax(&time[dst], iter) < iter) {
+              wl2[atomicAdd(wl2size, 1)] = dst;
+            }
+          /*@-NonDup@*/
+          /*@+Dup@*/
+          wl2[atomicAdd(wl2size, 1)] = dst;
+          /*@-Dup@*/
+
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        /*@Thread@*/ updated = true; /*@Warp@*/ updated[threadIdx.x / WarpSize] = true; /*@Block@*/ updated = true;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+        }
+      }
+      /*@Thread@*/ /*@Warp@*/ __syncwarp(); /*@Block@*/ __syncthreads();
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/ /*@+NonDup@*/
+      /*@Thread@*/ /*@Warp@*/ if (threadIdx.x % WarpSize == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+        /*@Thread@*/ if (updated) { /*@Warp@*/ if (updated[warp]) { /*@Block@*/ if (updated) {
+          if (atomicMax(&time[src], iter) < iter) {
+            wl2[atomicAdd(wl2size, 1)] = src;
+          }
+        /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      }
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/ /*@-NonDup@*/
+
+      /*@+Determ@*/
+      /*@Thread@*/ /*@Warp@*/ if (threadIdx.x % WarpSize == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+      /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@CudaAtomic@*/ label_n[src].fetch_min(new_label); /*@RaceBug@*/ suppress
+      /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      /*@-Determ@*/
+
+
+      /*@+Persist@*/
+      /*@Thread@*/ /*@Warp@*/ __syncwarp(); /*@Block@*/ __syncthreads();
+      /*@-Persist@*/
+    }
+  }
+}
+
+static double GPUsssp_vertex(const int src, const ECLgraph g, basic_t* const dist)
+{
+  data_type* d_dist;
+  if (cudaSuccess != cudaMalloc((void **)&d_dist, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_dist\n");
+  /*@+Determ@*/
+  data_type* d_dist_new;
+  if (cudaSuccess != cudaMalloc((void **)&d_dist_new, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_dist_new\n");
+  /*@-Determ@*/
+
+  int* d_wl1;
+  /*@+ReadWrite@*/
+  if (cudaSuccess != cudaMalloc((void **)&d_wl1, (g.edges + g.nodes) * sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl1\n");
+  /*@-ReadWrite@*/
+  /*@+ReadModifyWrite@*/
+  if (cudaSuccess != cudaMalloc((void **)&d_wl1, MAX(g.edges, g.nodes) * sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl1\n");
+  /*@-ReadModifyWrite@*/
+  int* d_wl1size;
+  if (cudaSuccess != cudaMalloc((void **)&d_wl1size, sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl1size\n");
+
+  int* d_wl2;
+  /*@+ReadWrite@*/
+  if (cudaSuccess != cudaMalloc((void **)&d_wl2, (g.edges + g.nodes) * sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl2\n");
+  /*@-ReadWrite@*/
+  /*@+ReadModifyWrite@*/
+  if (cudaSuccess != cudaMalloc((void **)&d_wl2, MAX(g.edges, g.nodes) * sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl2\n");
+  /*@-ReadModifyWrite@*/
+  int* d_wl2size;
+  if (cudaSuccess != cudaMalloc((void **)&d_wl2size, sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl2size\n");
+
+  /*@+NonDup@*/
+  int* d_time;
+  if (cudaSuccess != cudaMalloc((void **)&d_time, sizeof(int) * g.nodes)) {fprintf(stderr, "ERROR: could not allocate memory\n"); exit(-1);}
+  cudaMemset(d_time, 0, sizeof(int) * g.nodes);
+  /*@-NonDup@*/
+
+  int wlsize;
+
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+
+  //BlankLine
+  /*@NonDeterm@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(src, d_dist, g.nodes, g, d_wl1, d_wl2size); /*@Determ@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(src, d_dist, d_dist_new, g.nodes, g, d_wl1, d_wl2size);
+  //BlankLine
+  if (cudaSuccess != cudaMemcpy(&wlsize, d_wl2size, sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of wlsize from device failed\n");
+  if (cudaSuccess != cudaMemcpy(d_wl1size, &wlsize, sizeof(int), cudaMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of wl1size to device failed\n");
+  // iterate until no more changes
+  int iter = 0;
+  //BlankLine
+
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  do {
+    iter++;
+    cudaMemset(d_wl2size, 0, sizeof(int));
+    /*@+NonPersist@*/
+    /*@Thread@*/ const int blocks = (wlsize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)wlsize * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = wlsize;
+    /*@-NonPersist@*/
+
+    //BlankLine
+    /*@+NonDup@*/
+    /*@NonDeterm@*/ sssp_vertex_data<<<blocks, ThreadsPerBlock>>>(g, d_dist, d_wl1, wlsize, d_wl2, d_wl2size, iter, d_time); /*@Determ@*/ sssp_vertex_data<<<blocks, ThreadsPerBlock>>>(g, d_dist, d_dist_new, d_wl1, wlsize, d_wl2, d_wl2size, iter, d_time);
+    /*@-NonDup@*/
+    /*@+Dup@*/
+    /*@NonDeterm@*/ sssp_vertex_data<<<blocks, ThreadsPerBlock>>>(g, d_dist, d_wl1, wlsize, d_wl2, d_wl2size); /*@Determ@*/ sssp_vertex_data<<<blocks, ThreadsPerBlock>>>(g, d_dist, d_dist_new, d_wl1, wlsize, d_wl2, d_wl2size);
+    /*@-Dup@*/
+    //BlankLine
+    if (cudaSuccess != cudaMemcpy(&wlsize, d_wl2size, sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of wlsize from device failed\n");
+    SWAP(d_wl1, d_wl2);
+    SWAP(d_wl1size, d_wl2size);
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(d_dist, d_dist_new);
+  } while (wlsize > 0);
+  //BlankLine
+
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  //BlankLine
+
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  CheckCuda();
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  /*@NonDeterm@*/ if (cudaSuccess != cudaMemcpy(dist, d_dist, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of dist from device failed\n"); /*@Determ@*/ if (cudaSuccess != cudaMemcpy(dist, d_dist_new, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of dist from device failed\n");
+
+  //BlankLine
+  cudaFree(d_dist);
+  cudaFree(d_wl1);
+  cudaFree(d_wl1size);
+  cudaFree(d_wl2);
+  cudaFree(d_wl2size);
+  /*@NonDup@*/ cudaFree(d_time); /*@Dup@*/
+  return runtime;
+}

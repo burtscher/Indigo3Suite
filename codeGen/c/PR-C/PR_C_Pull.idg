@@ -1,0 +1,140 @@
+/*@FloatType@*/ typedef float score_type; /*@DoubleType@*/ typedef double score_type;
+/*@Block@*/ declare /*@Cyclic@*/ declare
+#include "indigo_pr_c.h"
+//BlankLine
+
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+
+/*@+NoRaceBug@*/
+/*@AtomicAdd@*/ typedef _Atomic double error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+/*@-NoRaceBug@*/
+/*@+RaceBug@*/
+typedef double error_type;
+/*@-RaceBug@*/
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static ECLgraph g;
+static error_type error;
+static score_type* outgoing_contrib;
+static score_type* scores;
+static const int* degree;
+static score_type base_score;
+static int threadCount;
+/*@+Reduction@*/
+double* localSums;
+/*@-Reduction@*/
+/*@+Critical@*/ 
+mtx_t mutex;
+/*@-Critical@*/ 
+
+//BlankLine
+static int errorCalc(void* arg)
+{
+  const long threadID = (long)arg;
+  double local_error = 0;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i < endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i < top; i += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i <= endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i <= top; i += threadCount) { 
+  /*@-BoundsBug@*/
+    score_type incoming_total = 0;
+    for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) {
+      const int nei = g.nlist[j];
+      /*@Determin@*/ incoming_total += outgoing_contrib[nei]; /*@NonDetermin@*/ incoming_total += scores[nei] / degree[nei];
+    }
+    score_type old_score = scores[i];
+    scores[i] = base_score + kDamp * incoming_total;
+    
+    local_error += fabs(scores[i] - old_score);
+  }
+  
+  /*@+NoRaceBug@*/ 
+  /*@AtomicAdd@*/ atomicAddDouble(&error, local_error); /*@Reduction@*/ localSums[threadID] = local_error; /*@Critical@*/ 
+  /*@-NoRaceBug@*/ 
+  
+  /*@+Critical@*/ /*@+NoRaceBug@*/
+  mtx_lock(&mutex);
+  error += local_error;
+  mtx_unlock(&mutex);
+  /*@-Critical@*/ /*@-NoRaceBug@*/
+  
+  /*@+RaceBug@*/ 
+  /*@AtomicAdd@*/ error += local_error; /*@Reduction@*/ suppress /*@Critical@*/ error += local_error;
+  /*@-RaceBug@*/ 
+}
+//BlankLine
+
+static double PR_CPU(const ECLgraph l_g, score_type* l_scores, int* l_degree, const int l_threadCount)
+{
+  g = l_g;
+  scores = l_scores;
+  degree = l_degree;
+  threadCount = l_threadCount;
+  base_score = (1.0f - kDamp) / (score_type)g.nodes;
+  outgoing_contrib = (score_type*)malloc(g.nodes * sizeof(score_type));
+  /*@+Reduction@*/
+  localSums = (double*)malloc(threadCount * sizeof(double));
+  /*@-Reduction@*/
+  /*@+Critical@*/
+  mtx_init(&mutex, mtx_plain);
+  /*@-Critical@*/
+  thrd_t threadHandles[threadCount];
+
+  //BlankLine
+  int iter;
+  struct timeval start, end;
+  gettimeofday(&start, NULL);  
+  //BlankLine
+  
+  for (iter = 0; iter < MAX_ITER; iter++) {
+    error = 0;    
+    /*@Determin@*/ for (int i = 0; i < g.nodes; i++) outgoing_contrib[i] = scores[i] / degree[i]; /*@NonDetermin@*/
+    
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], errorCalc, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+      /*@+Reduction@*/
+      error += localSums[i]; //sum reduction
+      /*@-Reduction@*/
+    }
+
+    if (error < EPSILON) break;
+  }  
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  if (iter < MAX_ITER) iter++;
+  printf("CPU iterations = %d.\n", iter);
+  //BlankLine
+  
+  free(outgoing_contrib);
+  /*@+Reduction@*/
+  free(localSums);
+  /*@-Reduction@*/
+  /*@+Critical@*/ 
+  mtx_destroy(&mutex);
+  /*@-Critical@*/ 
+  return runtime;
+}

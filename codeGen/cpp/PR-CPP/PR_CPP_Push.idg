@@ -1,0 +1,141 @@
+
+/*@FloatType@*/ typedef float score_type; /*@DoubleType@*/ typedef double score_type;
+/*@AtomicAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ #include <mutex>
+/*@Block@*/ declare /*@Cyclic@*/ declare
+#include "indigo_pr_cpp.h"
+/*@AtomicAdd@*/ typedef std::atomic<double> error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+typedef std::atomic<score_type> shared_t;
+
+/*@+Critical@*/
+//+BlankLine
+std::mutex mutex;
+/*@-Critical@*/
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+//BlankLine
+static void incomingCalc(const ECLgraph g, score_type* outgoing_contrib, shared_t* incoming_total, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i < endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i < top; i += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i <= endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i <= top; i += threadCount) { 
+  /*@-BoundsBug@*/
+    const score_type outgoing = outgoing_contrib[i];
+    for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) {
+      const int nei = g.nlist[j];
+      
+      atomicAdd(&incoming_total[nei], outgoing);
+    }
+  }
+}
+//BlankLine
+
+static void errorCalc(const int nodes, error_type& error, score_type* outgoing_contrib, score_type* incoming_total, score_type* scores, const score_type base_score, const int threadID, const int threadCount)
+{
+  double local_error = 0;
+  /*@+Block@*/
+  const int begNode = threadID * (long)nodes / threadCount;
+  const int endNode = (threadID + 1) * (long)nodes / threadCount;
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = nodes;
+  /*@-Cyclic@*/
+  
+  /*@Block@*/ for (int i = begNode; i < endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i < top; i += threadCount) { 
+    score_type incoming = incoming_total[i];     
+    score_type old_score = scores[i];
+    const score_type value = base_score + kDamp * incoming;
+    scores[i] = value;
+    
+    local_error += fabs(value - old_score);
+  }
+  /*@AtomicAdd@*/ atomicAdd(&error, local_error); /*@Reduction@*/ error = local_error; /*@Critical@*/ 
+  /*@+Critical@*/ 
+  mutex.lock();
+  error += local_error;
+  mutex.unlock();
+  /*@-Critical@*/ 
+}
+//BlankLine
+
+static double PR_CPU(const ECLgraph g, score_type *scores, int* degree, const int threadCount)
+{
+  const score_type base_score = (1.0f - kDamp) / (score_type)g.nodes;
+  score_type* outgoing_contrib = (score_type*)malloc(g.nodes * sizeof(score_type));
+  score_type* incoming_total = (score_type*)malloc(g.nodes * sizeof(score_type));
+  std::thread threadHandles[threadCount];
+  /*@+Reduction@*/
+  double localSums[threadCount];
+  /*@-Reduction@*/
+  
+  //BlankLine
+  int iter;
+  timeval start, end;
+  gettimeofday(&start, NULL);  
+  //BlankLine
+  
+  for (iter = 0; iter < MAX_ITER; iter++) {
+    error_type error = 0;    
+    for (int i = 0; i < g.nodes; i++) {
+      outgoing_contrib[i] = scores[i] / degree[i];
+      incoming_total[i] = 0;
+    }
+    
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i] = std::thread(incomingCalc, g, outgoing_contrib, (shared_t*)incoming_total, i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    
+    for (int i = 0; i < threadCount; ++i) {
+      /*@+AtomicAdd@*/
+      threadHandles[i] = std::thread(errorCalc, g.nodes, std::ref(error), outgoing_contrib, incoming_total, scores, base_score, i, threadCount);
+      /*@-AtomicAdd@*/
+      /*@+Critical@*/
+      threadHandles[i] = std::thread(errorCalc, g.nodes, std::ref(error), outgoing_contrib, incoming_total, scores, base_score, i, threadCount);
+      /*@-Critical@*/
+      /*@+Reduction@*/
+      threadHandles[i] = std::thread(errorCalc, g.nodes, std::ref(localSums[i]), outgoing_contrib, incoming_total, scores, base_score, i, threadCount);
+      /*@-Reduction@*/
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+      /*@+Reduction@*/
+      error += localSums[i]; //sum reduction
+      /*@-Reduction@*/
+    }
+    
+    if (error < EPSILON) break;
+  }
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  if (iter < MAX_ITER) iter++;
+  printf("CPU iterations = %d.\n", iter);
+  //BlankLine
+  
+  free(outgoing_contrib);
+  free(incoming_total);
+  return runtime;
+}

@@ -1,0 +1,183 @@
+/*@IntType@*/ typedef unsigned int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_mis_vertex_c.h"
+/*@Atomic@*/ typedef _Atomic unsigned char shared_t; /*@RaceBug@*/ typedef unsigned char shared_t;
+typedef _Atomic int idx_t;
+//BlankLine
+
+/*@Block@*/ /*@Cyclic@*/
+/*@Atomic@*/ /*@RaceBug@*/ 
+/*@NonDeterm@*/ /*@Determ@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/
+/*@NoBoundsBug@*/ /*@BoundsBug@*/
+/*@NoNborBoundsBug@*/ /*@NborBoundsBug@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/
+/*@NoGuardBug@*/ /*@GuardBug@*/
+/*@NoShadowBug@*/ /*@ShadowBug@*/
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static ECLgraph g;
+static data_type* priority;
+static shared_t* status;
+/*@NonDeterm@*/ /*@Determ@*/ static shared_t* status_n;
+static int* wl1;
+static int wl1size;
+static int* wl2;
+static idx_t wl2size;
+static int threadCount;
+
+//BlankLine
+static void init(const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++)
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887) % 1000; /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8)) % 1000;
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
+    
+    //BlankLine
+    // initialize worklist
+    wl1[v] = v;
+  }
+  wl1size = size;
+}
+//BlankLine
+
+/*@+Determ@*/
+static int updateFromWorklist(void* arg)
+{
+  const long threadID = (long)arg;
+  const int begNode = threadID * (long)wl1size / threadCount;
+  const int endNode = (threadID + 1) * (long)wl1size / threadCount;
+  
+  for (int i = begNode; i < endNode; ++i)
+  {
+    int v = wl1[i];
+    status[v] = status_n[v];
+  }
+}
+//+BlankLine
+/*@-Determ@*/
+
+static int mis(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int w = begNode; w < endNode; w++) { /*@Cyclic@*/ for (int w = threadID; w < top; w += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int w = begNode; w <= endNode; w++) { /*@Cyclic@*/ for (int w = threadID; w <= top; w += threadCount) { 
+  /*@-BoundsBug@*/
+    int v = wl1[w];
+    if (status[v] == undecided) {
+      // try to find a non-excluded neighbor whose priority is higher
+      int i;
+      /*@NoShadowBug@*/ for (i = g.nindex[v]; i < g.nindex[v + 1]; i++) { /*@ShadowBug@*/ for (int i = g.nindex[v]; i < g.nindex[v + 1]; i++) {
+        /*@+NoLivelockBug@*/ 
+        if ((status[g.nlist[i]] != excluded) && ((priority[g.nlist[i]] > priority[v]) || ((priority[v] == priority[g.nlist[i]]) && (v < g.nlist[i])))) {
+        /*@-NoLivelockBug@*/ 
+        /*@+LivelockBug@*/ 
+        if ((status[g.nlist[i]] != excluded) && (priority[g.nlist[i]] >= priority[v])) {
+        /*@-LivelockBug@*/ 
+          // found such a neighbor -> status still unknown
+          wl2[wl2size++] = v;
+          break;
+        }
+      }
+      if (i >= g.nindex[v + 1]) {
+        // no such neighbor -> all neighbors are "excluded" and v is "included"
+        /*@NonDeterm@*/ status[v] = included; /*@CopyDeterm@*/ status_n[v] = included; /*@Determ@*/ status_n[v] = included; 
+        
+        /*@NoNborBoundsBug@*/ for (int j = g.nindex[v]; j < g.nindex[v + 1]; j++) { /*@NborBoundsBug@*/ for (int j = g.nindex[v]; j <= g.nindex[v + 1]; j++) {
+          
+          /*@NoGuardBug@*/ /*@GuardBug@*/ if (status[g.nlist[j]] != excluded) {
+            /*@NonDeterm@*/ status[g.nlist[j]] = excluded; /*@CopyDeterm@*/ status_n[g.nlist[j]] = excluded; /*@Determ@*/ status_n[g.nlist[j]] = excluded;
+          /*@NoGuardBug@*/ /*@GuardBug@*/ }
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double CPPmis_vertex(const ECLgraph l_g, data_type* const l_priority, unsigned char* const l_status, const int l_threadCount)
+{
+  g = l_g;
+  priority = l_priority;
+  status = (shared_t*)l_status;
+  threadCount = l_threadCount;
+  /*@NonDeterm@*/ /*@Determ@*/ status_n = (shared_t*)malloc(g.nodes * sizeof(shared_t));
+  wl1 = (int*)malloc(g.nodes * sizeof(int));
+  wl2 = (int*)malloc(g.nodes * sizeof(int));
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+
+  init(g.nodes);
+  
+  //BlankLine
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  int iter = 0;
+  do {
+    iter++;
+    wl2size = 0;
+    
+    //BlankLine
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], mis, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ 
+    /*@+Determ@*/
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], updateFromWorklist, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    //BlankLine
+    /*@-Determ@*/
+    
+    SWAP(wl1, wl2);
+    wl1size = wl2size;
+  } while (wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ free(status_n);
+  free(wl1);
+  free(wl2);
+  return runtime;
+}

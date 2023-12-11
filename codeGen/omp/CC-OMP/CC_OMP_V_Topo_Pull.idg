@@ -1,0 +1,81 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_vertex_omp.h"
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@NonDeterm@*/static void init(data_type* const label, const int size) /*@Determ@*/static void init(data_type* const label, data_type* const label_n, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    /*@NonDeterm@*/ /*@Determ@*/ label_n[v] = v;
+    label[v] = v;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void cc(const ECLgraph g, data_type* const label, int* goagain) /*@Determ@*/ static void cc(const ECLgraph g, data_type* const label, data_type* const label_n, int* goagain)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int v = 0; v < g.nodes; v++) { /*@FieldBug@*/ for (int v = 0; v < g.edges; v++) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int v = 0; v <= g.nodes; v++) { /*@FieldBug@*/ for (int v = 0; v <= g.edges; v++) { 
+  /*@-BoundsBug@*/
+
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    /*@RaceBug@*/ /*@Atomic@*/ data_type d = atomicRead(&label[v]);
+    /*@+NonDeterm@*/
+    /*@RaceBug@*/ data_type d = label[v]; /*@Atomic@*/
+    /*@-NonDeterm@*/
+    /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug@*/ for (int i = beg; i <= end; i++) {
+      const int src = g.nlist[i];
+      /*@RaceBug@*/ const data_type new_label = label[src]; /*@Atomic@*/ const data_type new_label = atomicRead(&label[src]);
+      /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+        d = new_label;
+        /*@RaceBug@*/ atomicWrite(goagain, 1);; /*@Atomic@*/ atomicWrite(goagain, 1);
+      }
+    /*@+NonDeterm@*/
+    /*@RaceBug@*/ label[v] = d; /*@Atomic@*/ atomicWrite(&label[v], d);
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    /*@RaceBug@*/ suppress /*@Atomic@*/ atomicWrite(&label_n[v], d);
+    /*@-Determ@*/
+    }
+  }
+}
+//BlankLine
+
+static double CPUcc_vertex(const ECLgraph g, data_type* label)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* label_new = malloc(sizeof(data_type) * g.nodes);
+  struct timeval start, end;
+  //BlankLine
+
+  /*@NonDeterm@*/ init(label, g.nodes); /*@Determ@*/ init(label, label_new, g.nodes);
+  //BlankLine
+
+  // iterate until no more changes
+  int* goagain = malloc(sizeof(int));
+  int iter = 0;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  do {
+    iter++;
+    *goagain = 0;
+    /*@NonDeterm@*/ cc(g, label, goagain); /*@Determ@*/ cc(g, label, label_new, goagain);
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(label, label_new);
+  } while (*goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  return runtime;
+}

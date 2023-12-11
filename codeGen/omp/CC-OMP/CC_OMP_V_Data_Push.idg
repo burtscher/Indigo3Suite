@@ -1,0 +1,173 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_vertex_omp.h"
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/ static void init(data_type* const label, const int size, int* const wl1, int* wlsize) /*@Determ@*/ static void init(data_type* const label, data_type* const label_n, const int size, int* const wl1, int* wlsize)
+{
+  // initialize label array
+  for (int v = 0; v < size; v++) {
+    /*@+Determ@*/
+    label_n[v] = v;
+    /*@-Determ@*/
+    label[v] = v;
+
+    // initialize worklist
+    wl1[v] = v;
+  }
+  *wlsize = size;
+}
+//BlankLine
+
+/*@+NonDup@*/
+/*@NonDeterm@*/ static void cc_vertex_data(const ECLgraph g, data_type* const label, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time) /*@Determ@*/ static void cc_vertex_data(const ECLgraph g, data_type* const label, data_type* const label_n, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time)
+/*@-NonDup@*/
+/*@+Dup@*/
+/*@NonDeterm@*/ static void cc_vertex_data(const ECLgraph g, data_type* const label, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter) /*@Determ@*/ static void cc_vertex_data(const ECLgraph g, data_type* const label, data_type* const label_n, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter)
+/*@-Dup@*/
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx < wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx < g.nodes; idx ++) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx <= wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx <= g.nodes; idx ++) { 
+  /*@-BoundsBug@*/
+
+    const int src = wl1[idx];
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@RaceBug@*/ const data_type new_label = label[src]; /*@Atomic@*/ const data_type new_label = atomicRead(&label[src]);
+    /*@NoMixSyncBug@*/ /*@MixSyncBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ data_type new_label; /*@MixSyncBug@*/ const data_type new_label = atomicRead(&label[src]);
+    /*@NoMixSyncBug@*/ #pragma omp critical /*@MixSyncBug@*/
+    /*@NoMixSyncBug@*/ new_label = label[src]; /*@MixSyncBug@*/
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ const data_type new_label = label[src]; /*@MixSyncBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
+    //BlankLine
+
+    /*@+ReadWrite@*/
+    /*@NonDeterm@*/ bool update = false; /*@Determ@*/ suppress
+    /*@-ReadWrite@*/
+
+    /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug@*/ for (int i = beg; i <= end; i++) {
+      const int dst = g.nlist[i];
+      //BlankLine
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      /*@RaceBug@*/ const data_type d = label[dst]; /*@Atomic@*/ const data_type d = atomicRead(&label[dst]);
+      /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+        /*@RaceBug@*/ label[dst] = new_label; /*@Atomic@*/ atomicWrite(&label[dst], new_label);
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&label[dst], new_label) > new_label) {
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&label_n[dst], new_label) > new_label) {
+      /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+        /*@+NonDup@*/
+        if (critical_max(&time[dst], iter) != iter) {
+          wl2[fetch_and_add(wl2size)] = dst;
+        }
+        /*@-NonDup@*/
+        /*@+Dup@*/
+        wl2[fetch_and_add(wl2size)] = dst;
+        /*@-Dup@*/
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      update = true;
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+      }
+    }
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@NonDup@*/ if (update) { /*@Dup@*/ if (update) {
+      /*@NonDup@*/ if (critical_max(&time[src], iter) != iter) { /*@Dup@*/
+        /*@NonDup@*/ wl2[fetch_and_add(wl2size)] = src; /*@Dup@*/ wl2[fetch_and_add(wl2size)] = src;
+      /*@NonDup@*/ } /*@Dup@*/
+      /*@NonDup@*/ } /*@Dup@*/ }
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+    /*@+Determ@*/
+    /*@RaceBug@*/ label_n[src] = new_label; /*@Atomic@*/ critical_min(&label_n[src], new_label);
+    /*@-Determ@*/
+  }
+}
+//BlankLine
+
+static double CPUcc_vertex(const ECLgraph g, data_type* label)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* label_new = malloc(g.nodes * sizeof(data_type));
+  const int size = MAX(g.edges, g.nodes);
+  int* wl1 = (int*) malloc(size * sizeof(int));
+  int* wl2 = (int*) malloc(size * sizeof(int));
+  int* wl1size = malloc(sizeof(int));
+  int* wl2size = malloc(sizeof(int));
+
+  /*@+NonDup@*/
+  //+BlankLine
+  int* time = malloc(sizeof(int) * g.nodes);
+  for (int i = 0; i < g.nodes; i++) {
+    time[i] = 0;
+  }
+  /*@-NonDup@*/
+  
+  struct timeval start, end;
+  //BlankLine
+
+  /*@NonDeterm@*/ init(label, g.nodes, wl1, wl1size); /*@Determ@*/ init(label, label_new, g.nodes, wl1, wl1size);
+  //BlankLine
+
+  // iterate until no more changes
+  gettimeofday(&start, NULL);
+  //BlankLine
+  int iter = 0;
+  do {
+    iter++;
+    *wl2size = 0;
+
+    //BlankLine
+    /*@+NonDup@*/
+    /*@NonDeterm@*/ cc_vertex_data(g, label, wl1, *wl1size, wl2, wl2size, iter, time); /*@Determ@*/ cc_vertex_data(g, label, label_new, wl1, *wl1size, wl2, wl2size, iter, time);
+    /*@-NonDup@*/
+    /*@+Dup@*/
+    /*@NonDeterm@*/ cc_vertex_data(g, label, wl1, *wl1size, wl2, wl2size, iter); /*@Determ@*/ cc_vertex_data(g, label, label_new, wl1, *wl1size, wl2, wl2size, iter);
+    /*@-Dup@*/
+    //BlankLine
+    SWAP(wl1, wl2);
+    *wl1size = *wl2size;
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(label, label_new);
+  } while (*wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ free (iter % 2 ? label : label_new);
+  free(wl1);
+  free(wl2);
+  free(wl1size);
+  free(wl2size);
+  /*@+NonDup@*/
+  free(time);
+  /*@-NonDup@*/
+  return runtime;
+}

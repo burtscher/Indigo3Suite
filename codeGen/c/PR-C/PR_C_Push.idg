@@ -1,0 +1,173 @@
+/*@FloatType@*/ typedef float score_type; /*@DoubleType@*/ typedef double score_type;
+/*@Block@*/ declare /*@Cyclic@*/ declare
+#include "indigo_pr_c.h"
+//BlankLine
+
+/*@NoRaceBug1@*/ declare /*@RaceBug1@*/ declare 
+/*@NoRaceBug2@*/ declare /*@RaceBug2@*/ declare
+
+/*@+NoRaceBug1@*/
+/*@AtomicAdd@*/ typedef _Atomic double error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+/*@-NoRaceBug1@*/
+/*@NoRaceBug1@*/ /*@RaceBug1@*/ typedef double error_type;
+
+/*@NoRaceBug2@*/ typedef _Atomic score_type shared_t; /*@RaceBug2@*/ typedef score_type shared_t;
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static ECLgraph g;
+static error_type error;
+static score_type* outgoing_contrib;
+static shared_t* incoming_total;
+static score_type* scores;
+static const int* degree;
+static score_type base_score;
+static int threadCount;
+/*@+Reduction@*/
+double* localSums;
+/*@-Reduction@*/
+/*@+Critical@*/ 
+mtx_t mutex;
+/*@-Critical@*/ 
+
+//BlankLine
+static int incomingCalc(void* arg)
+{
+  const long threadID = (long)arg;
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i < endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i < top; i += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int i = begNode; i <= endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i <= top; i += threadCount) { 
+  /*@-BoundsBug@*/
+    const score_type outgoing = outgoing_contrib[i];
+    for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) {
+      const int nei = g.nlist[j];
+      
+      /*@NoRaceBug2@*/ atomicAdd(&incoming_total[nei], outgoing); /*@RaceBug2@*/ incoming_total[nei] += outgoing;
+    }
+  }
+}
+//BlankLine
+
+static int errorCalc(void* arg)
+{
+  const long threadID = (long)arg;
+  double local_error = 0;
+  /*@+Block@*/
+  const int begNode = threadID * (long)g.nodes / threadCount;
+  const int endNode = (threadID + 1) * (long)g.nodes / threadCount;
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = g.nodes;
+  /*@-Cyclic@*/
+  
+  /*@Block@*/ for (int i = begNode; i < endNode; i++) { /*@Cyclic@*/ for (int i = threadID; i < top; i += threadCount) { 
+    score_type incoming = incoming_total[i];     
+    score_type old_score = scores[i];
+    const score_type value = base_score + kDamp * incoming;
+    scores[i] = value;
+    
+    local_error += fabs(value - old_score);
+  }
+  /*@+NoRaceBug1@*/ 
+  /*@AtomicAdd@*/ atomicAddDouble(&error, local_error); /*@Reduction@*/ localSums[threadID] = local_error; /*@Critical@*/ 
+  /*@-NoRaceBug1@*/ 
+  
+  /*@+Critical@*/ /*@+NoRaceBug1@*/
+  mtx_lock(&mutex);
+  error += local_error;
+  mtx_unlock(&mutex);
+  /*@-Critical@*/ /*@+NoRaceBug1@*/
+  
+  /*@+RaceBug1@*/ 
+  /*@AtomicAdd@*/ error += local_error; /*@Reduction@*/ suppress /*@Critical@*/ error += local_error;
+  /*@-RaceBug1@*/ 
+}
+//BlankLine
+
+static double PR_CPU(const ECLgraph l_g, score_type* l_scores, int* l_degree, const int l_threadCount)
+{
+  g = l_g;
+  scores = l_scores;
+  degree = l_degree;
+  threadCount = l_threadCount;
+  base_score = (1.0f - kDamp) / (score_type)g.nodes;
+  outgoing_contrib = (score_type*)malloc(g.nodes * sizeof(score_type));
+  incoming_total = (shared_t*)malloc(g.nodes * sizeof(shared_t));
+  thrd_t threadHandles[threadCount];
+  /*@+Reduction@*/
+  localSums = (double*)malloc(threadCount * sizeof(double));
+  /*@-Reduction@*/
+  /*@+Critical@*/
+  mtx_init(&mutex, mtx_plain);
+  /*@-Critical@*/
+  
+  //BlankLine
+  int iter;
+  struct timeval start, end;
+  gettimeofday(&start, NULL);  
+  //BlankLine
+  
+  for (iter = 0; iter < MAX_ITER; iter++) {
+    error = 0;    
+    for (int i = 0; i < g.nodes; i++) {
+      outgoing_contrib[i] = scores[i] / degree[i];
+      incoming_total[i] = 0;
+    }
+    
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], incomingCalc, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+    }
+    
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_create(&threadHandles[i], errorCalc, (void *)i);
+    }
+    for (long i = 0; i < threadCount; ++i) {
+      thrd_join(threadHandles[i], NULL);
+      /*@+Reduction@*/
+      error += localSums[i]; //sum reduction
+      /*@-Reduction@*/
+    }
+    
+    if (error < EPSILON) break;
+  }
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  if (iter < MAX_ITER) iter++;
+  printf("CPU iterations = %d.\n", iter);
+  //BlankLine
+  
+  free(outgoing_contrib);
+  free(incoming_total);
+  /*@+Reduction@*/
+  free(localSums);
+  /*@-Reduction@*/
+  /*@+Critical@*/ 
+  mtx_destroy(&mutex);
+  /*@-Critical@*/ 
+  return runtime;
+}

@@ -1,0 +1,137 @@
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@GlobalAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ declare
+/*@Block@*/ declare /*@Cyclic@*/ declare
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@IntType@*/ typedef int basic_t; /*@LongType@*/ typedef unsigned long long basic_t;
+
+#include "indigo_tc_edge_c.h"
+//BlankLine
+
+/*@+NoRaceBug@*/
+/*@GlobalAdd@*/ typedef _Atomic basic_t shared_t; /*@Reduction@*/ typedef basic_t shared_t; /*@Critical@*/ typedef basic_t shared_t;
+/*@-NoRaceBug@*/ 
+/*@+RaceBug@*/ 
+typedef basic_t shared_t;
+/*@-RaceBug@*/ 
+//BlankLine
+
+static ECLgraph g;
+static shared_t g_count;
+static int edges;
+static const int* nindex;
+static const int* nlist;
+static const int* sp;
+static int threadCount;
+/*@+Reduction@*/
+basic_t* localSums;
+/*@-Reduction@*/
+/*@+Critical@*/ 
+mtx_t mutex;
+/*@-Critical@*/ 
+
+//BlankLine
+static int triCounting(void* arg)
+{
+  const long threadID = (long)arg;
+  basic_t count = 0;
+  
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)edges / threadCount; /*@PrecedenceBug@*/ declare const int begEdge = threadID * edges / threadCount;
+  /*@NoPrecedenceBug@*/ const int endEdge = (threadID + 1) * (long)edges / threadCount; /*@PrecedenceBug@*/ const int endEdge = (threadID + 1) * edges / threadCount;
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  /*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+  const int top = edges;
+  /*@-Cyclic@*/
+  
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int e = begEdge; e < endEdge; e++) { /*@Cyclic@*/ for (int e = threadID; e < top; e += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int e = begEdge; e <= endEdge; e++) { /*@Cyclic@*/ for (int e = threadID; e <= top; e += threadCount) { 
+  /*@-BoundsBug@*/
+  
+    const int src = sp[e];
+    const int dst = nlist[e];
+    //BlankLine
+
+    if (src > dst) {
+      const int beg1 = nindex[dst];
+      const int end1 = nindex[dst + 1];
+
+      /*@NoNbrBoundsBug@*/ for (int i = beg1; i < end1 && nlist[i] < dst; i++) { /*@NbrBoundsBug@*/ for (int i = beg1; i <= end1 && nlist[i] < dst; i++) {
+        const int u = nlist[i];
+        int beg2 = nindex[src];
+        int end2 = nindex[src + 1];
+        if (find(u, beg2, end2, nlist)) count++;
+      }
+    }
+  }
+  /*@+NoRaceBug@*/ 
+  /*@GlobalAdd@*/ g_count += count; /*@Reduction@*/ localSums[threadID] = count; /*@Critical@*/ 
+  /*@-NoRaceBug@*/ 
+
+  /*@+Critical@*/ /*@+NoRaceBug@*/
+  mtx_lock(&mutex);
+  g_count += count;
+  mtx_unlock(&mutex);
+  /*@-Critical@*/ /*@-NoRaceBug@*/
+
+  /*@+RaceBug@*/ 
+  /*@GlobalAdd@*/ g_count += count; /*@Reduction@*/ suppress /*@Critical@*/ g_count += count;
+  /*@-RaceBug@*/ 
+}
+//BlankLine
+
+static double CPUtc_edge(basic_t* count_orig, const int l_edges, const int* const l_nindex, const int* const l_nlist, const int* const l_sp, const int l_threadCount)
+{
+  edges = l_edges;
+  nindex = l_nindex;
+  nlist = l_nlist;
+  sp = l_sp;
+  threadCount = l_threadCount;
+  /*@+Reduction@*/
+  localSums = (basic_t*)malloc(threadCount * sizeof(basic_t));
+  /*@-Reduction@*/
+  /*@+Critical@*/
+  mtx_init(&mutex, mtx_plain);
+  /*@-Critical@*/
+  thrd_t threadHandles[threadCount];
+  //BlankLine
+  
+  struct timeval start, end;
+  g_count = 0;
+  
+  //BlankLine
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  for (long i = 0; i < threadCount; ++i) {
+    thrd_create(&threadHandles[i], triCounting, (void *)i);
+  }
+  for (long i = 0; i < threadCount; ++i) {
+    thrd_join(threadHandles[i], NULL);
+    /*@+Reduction@*/
+    g_count += localSums[i]; //sum reduction
+    /*@-Reduction@*/
+  }
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  //BlankLine
+
+  *count_orig = g_count;
+  
+  /*@+Reduction@*/
+  free(localSums);
+  /*@-Reduction@*/
+  /*@+Critical@*/ 
+  mtx_destroy(&mutex);
+  /*@-Critical@*/ 
+  return runtime;
+}

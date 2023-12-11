@@ -1,0 +1,158 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_sssp_vertex_omp.h"
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/ static void init(const int src, data_type* const dist, const int size, const ECLgraph g, int* const wl1, int* wlsize, int* const time) /*@Determ@*/ static void init(const int src, data_type* const dist, data_type* const dist_n, const int size, const ECLgraph g, int* const wl1, int* wlsize, int* const time)
+{
+  // initialize dist array
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@+Determ@*/
+      dist_n[v] = temp;
+    /*@-Determ@*/
+    dist[v] = temp;
+    time[v] = 0;
+  }
+  // initialize worklist
+  wl1[0] = src;
+  *wlsize = 1;
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void sssp_vertex_data(const ECLgraph g, data_type* const dist, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time) /*@Determ@*/ static void sssp_vertex_data(const ECLgraph g, data_type* const dist, data_type* const dist_n, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx < wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx < g.nodes; idx ++) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int idx = 0; idx <= wl1size; idx ++) { /*@FieldBug@*/ for (int idx = 0; idx <= g.nodes; idx ++) { 
+  /*@-BoundsBug@*/
+    const int src = wl1[idx];
+
+    // read distance from source vertex
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ const data_type s = dist[src]; /*@MixSyncBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+    
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@RaceBug@*/ const data_type s = dist[src]; /*@Atomic@*/ const data_type s = atomicRead(&dist[src]);
+    /*@NoMixSyncBug@*/ /*@MixSyncBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ data_type s; /*@MixSyncBug@*/ const data_type s = atomicRead(&dist[src]);
+    /*@NoMixSyncBug@*/ #pragma omp critical /*@MixSyncBug@*/
+    /*@NoMixSyncBug@*/ s = dist[src]; /*@MixSyncBug@*/
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
+    //BlankLine
+
+    /*@NoOverflowBug@*/ if (s != maxval) { /*@OverflowBug@*/ {
+      /*@+ReadWrite@*/
+      /*@NonDeterm@*/ bool update = false; /*@Determ@*/ suppress
+      /*@-ReadWrite@*/
+
+      /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug2@*/ for (int i = beg; i <= end; i++) {
+        const int dst = g.nlist[i];
+        const data_type new_dist = s + g.eweight[i];
+        //BlankLine
+
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        /*@RaceBug@*/ const data_type d = dist[dst]; /*@Atomic@*/ const data_type d = atomicRead(&dist[dst]);
+        /*@NoLivelockBug@*/ if (d > new_dist) { /*@LivelockBug@*/ if (d >= new_dist) {
+          /*@RaceBug@*/ dist[dst] = new_dist; /*@Atomic@*/ atomicWrite(&dist[dst], new_dist);
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+        /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+        /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&dist[dst], new_dist) > new_dist) {
+        /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+        /*@+Determ@*/ /*@+ReadModifyWrite@*/
+        /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&dist_n[dst], new_dist) > new_dist) {
+        /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+          /*@+NonDup@*/
+          if (critical_max(&time[dst], iter) != iter) {
+            wl2[fetch_and_add(wl2size)] = dst;
+          }
+          /*@-NonDup@*/
+          /*@+Dup@*/
+          wl2[fetch_and_add(wl2size)] = dst;
+          /*@-Dup@*/
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        update = true;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+        }
+      }
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      /*@NonDup@*/ if (update) { /*@Dup@*/ if (update) {
+        /*@NonDup@*/ if (critical_max(&time[src], iter) != iter) { /*@Dup@*/
+          /*@NonDup@*/ wl2[fetch_and_add(wl2size)] = src; /*@Dup@*/ wl2[fetch_and_add(wl2size)] = src;
+        /*@NonDup@*/ } /*@Dup@*/
+        /*@NonDup@*/ } /*@Dup@*/ }
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+      /*@+Determ@*/
+      /*@RaceBug@*/ dist_n[src] = s; /*@Atomic@*/ critical_min(&dist_n[src], s);
+      /*@-Determ@*/
+    }
+  }
+}
+//+BlankLine
+
+static double CPUsssp_vertex(const int src, const ECLgraph g, data_type* dist)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* dist_new = malloc(sizeof(data_type) * g.nodes);
+  const int size = MAX(g.edges, g.nodes);
+  int* wl1 = malloc(sizeof(int) * size);
+  int* wl2 = malloc(sizeof(int) * size);
+  int* time = malloc(sizeof(int) * g.nodes);
+  int* wl1size = malloc(sizeof(int));
+  int* wl2size = malloc(sizeof(int));
+
+  //BlankLine
+  struct timeval start, end;
+  //BlankLine
+
+  /*@NonDeterm@*/ init(src, dist, g.nodes, g, wl1, wl1size, time); /*@Determ@*/ init(src, dist, dist_new, g.nodes, g, wl1, wl1size, time);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  gettimeofday(&start, NULL);
+  do {
+    iter++;
+    *wl2size = 0;
+
+    //BlankLine
+    /*@NonDeterm@*/ sssp_vertex_data(g, dist, wl1, *wl1size, wl2, wl2size, iter, time); /*@Determ@*/ sssp_vertex_data(g, dist, dist_new, wl1, *wl1size, wl2, wl2size, iter, time);
+    //BlankLine
+    SWAP(wl1, wl2);
+    *wl1size = *wl2size;
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(dist, dist_new);
+  } while (*wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ free(iter % 2 ? dist : dist_new);
+  free(wl1);
+  free(wl2);
+  free(wl1size);
+  free(wl2size);
+  free(time);
+  return runtime;
+}

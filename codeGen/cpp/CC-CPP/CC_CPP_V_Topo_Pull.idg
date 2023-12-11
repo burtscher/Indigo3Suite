@@ -1,0 +1,113 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_vertex_cpp.h"
+/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@RaceBug@*/ typedef data_type shared_t; 
+typedef std::atomic<bool> flag_t;
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@NonDeterm@*/ /*@Determ@*/
+/*@+Determ@*/
+/*@Atomic@*/ /*@RaceBug@*/ suppress
+/*@-Determ@*/
+
+/*@NonDeterm@*/ static void init(shared_t* const label, const int size) /*@Determ@*/ static void init(shared_t* const label, shared_t* const label_n, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    /*@NonDeterm@*/ /*@Determ@*/ label_n[v] = v;
+    label[v] = v;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void cc(const ECLgraph g, shared_t* const label, flag_t& goagain, const int threadID, const int threadCount) /*@Determ@*/ static void cc(const ECLgraph g, shared_t* const label, shared_t* const label_n, flag_t& goagain, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/ 
+
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    data_type d = label[v];
+    //BlankLine
+    
+    /*@NoNbrBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NbrBoundsBug@*/ for (int i = beg; i <= end; i++) { 
+      const int src = g.nlist[i];
+      /*@+NonDeterm@*/
+      const data_type new_label = label[src];
+      /*@-NonDeterm@*/
+      /*@+Determ@*/
+      const data_type new_label = label[src];
+      /*@-Determ@*/
+      /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+        d = new_label;
+        goagain = 1;
+      }
+      label[v] = d;
+    }
+  }
+}
+//BlankLine
+
+static double CPUcc_vertex(const ECLgraph g, data_type* const label_orig, const int threadCount)
+{
+  shared_t* label = (shared_t*)label_orig;
+  /*@NonDeterm@*/ /*@Determ@*/ shared_t* label_new = new shared_t [g.nodes];
+  std::thread threadHandles[threadCount];
+  //BlankLine
+  
+  /*@NonDeterm@*/ init(label, g.nodes); /*@Determ@*/ init(label, label_new, g.nodes);
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  flag_t goagain;
+  int iter = 0;
+  do {
+    iter++;
+    goagain = 0;
+    
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(cc, g, label, std::ref(goagain), i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(cc, g, label, label_new, std::ref(goagain), i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(label, label_new);
+  } while (goagain);
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ delete [] (iter % 2 ? label : label_new);
+  return runtime;
+}

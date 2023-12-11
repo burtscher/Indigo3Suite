@@ -1,0 +1,207 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef long long data_type;
+#include "indigo_mst_vertex_cpp.h"
+/*@Atomic@*/ typedef std::atomic<int> idx_t; /*@RaceBug@*/ typedef int idx_t;
+/*@Atomic@*/ typedef std::atomic<bool> flag_t; /*@RaceBug@*/ typedef bool flag_t;
+//BlankLine
+
+/*@Atomic@*/ /*@RaceBug@*/ 
+/*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+static void init(const ECLgraph& g, data_type* const eweight, bool* const included, idx_t* const parent, idx_t* const minv)
+{
+  std::fill(included, included + g.edges, false);
+  for (int v = 0; v < g.nodes; v++) {
+    //initially, each vertex is its own parent
+    parent[v] = v;
+    minv[v] = INT_MAX;
+  }
+  for (int e = 0; e < g.edges; e++) {
+    eweight[e] = g.eweight[e];
+  }
+}
+//BlankLine
+
+static int findRep(int idx, idx_t* const parent)
+{
+  int curr = parent[idx];
+  if (curr != idx) {
+    int next, prev = idx;
+    while (curr != (next = parent[curr])) {
+      parent[prev] = next;
+      prev = curr;
+      curr = next;
+    }
+  }
+  return curr;
+}
+//BlankLine
+
+static void join(int arep, int brep, idx_t* const parent)
+{
+  int mrep;
+  do {
+    mrep = std::max(arep, brep);
+    arep = std::min(arep, brep);
+  } while ((brep = atomicCAS(&parent[mrep], mrep, arep)) != mrep);
+}
+//BlankLine
+
+static void mst_first(const ECLgraph& g, data_type* const eweight, idx_t* const minv, idx_t* const parent, flag_t& goagain, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/ 
+  
+    const int arep = findRep(v, parent);
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    
+    /*@NoNborBoundsBug@*/ for (int e = beg; e < end; e++) { /*@NborBoundsBug@*/ for (int e = beg; e <= end; e++) {
+      const int n = g.nlist[e];
+      //BlankLine
+      
+      if (n > v) {
+        const int brep = findRep(n, parent);
+        if (arep != brep) {
+          goagain = true;
+          //BlankLine
+          
+          int edx, upd;
+          upd = minv[arep];
+          do {
+            edx = upd;
+            const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
+            if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
+          } while ((upd = atomicCAS(&minv[arep], edx, e)) != edx);
+          //BlankLine
+          
+          upd = minv[brep];
+          do {
+            edx = upd;
+            const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
+            if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
+          } while ((upd = atomicCAS(&minv[brep], edx, e)) != edx);
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static void mst_second(const ECLgraph& g, bool* const included, idx_t* const minv, idx_t* const parent, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long long)N / threadCount); 
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/ 
+  
+  /*@+BoundsBug@*/ 
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/ 
+  
+    const int arep = findRep(v, parent);
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    
+    /*@NoNborBoundsBug@*/ for (int e = beg; e < end; e++) { /*@NborBoundsBug@*/ for (int e = beg; e <= end; e++) {
+      const int n = g.nlist[e];
+      //BlankLine
+      
+      if (n > v) {
+        const int brep = findRep(n, parent);
+        if (arep != brep) {
+          if ((e == minv[arep]) || (e == minv[brep])) { 
+          // if this was the best edge found for the set
+            join(arep, brep, parent);
+            included[e] = true;
+          }
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double CPUmst(const ECLgraph& g, bool* const included, const int threadCount)
+{
+  idx_t* parent = new idx_t [g.nodes];
+  idx_t* minv = new idx_t [g.nodes];
+  data_type* eweight = new data_type [g.edges];
+  std::thread threadHandles[threadCount];
+  //BlankLine
+  
+  init(g, eweight, included, parent, minv);
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  flag_t goagain;
+  int iter = 0;
+  do {
+    iter++;
+    goagain = false;
+    
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i] = std::thread(mst_first, g, eweight, minv, parent, std::ref(goagain), i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    if (goagain) {
+      for (int i = 0; i < threadCount; ++i) {
+        threadHandles[i] = std::thread(mst_second, g, included, minv, parent, i, threadCount);
+      }
+      for (int i = 0; i < threadCount; ++i) {
+        threadHandles[i].join();
+      }
+      //BlankLine
+      
+      std::fill((int*)minv, (int*)minv + g.nodes, INT_MAX);
+    }
+  } while (goagain);
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+  
+  delete [] parent;
+  delete [] minv;
+  delete [] eweight;
+  return runtime;
+}

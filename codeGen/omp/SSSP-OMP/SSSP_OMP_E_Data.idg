@@ -1,0 +1,150 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_sssp_edge_omp.h"
+//BlankLine
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/ static void init(const int src, data_type* const dist, const ECLgraph g, int* const wl1, int* wlsize, int* const time) /*@Determ@*/ static void init(const int src, data_type* const dist, data_type* const dist_n, const ECLgraph g, int* const wl1, int* wlsize, int* const time)
+{
+  // initialize dist array
+  for (int v = 0; v < g.nodes; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@+Determ@*/
+    dist_n[v] = temp;
+    /*@-Determ@*/
+    dist[v] = temp;
+    /*@UninitializedBug@*/ time[v] = 0; /*@NoUninitializedBug@*/ time[v] = 0; 
+  }
+  /*@+NoUninitializedBug@*/
+  for (int e = 0; e < g.edges; e++) {
+    time[e] = 0;
+  }
+  /*@-NoUninitializedBug@*/
+
+  // initialize worklist
+  int idx = 0;
+  for (int i = g.nindex[src]; i < g.nindex[src + 1]; i++) {
+    wl1[idx] = i;
+    idx++;
+  }
+  *wlsize = idx;
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void sssp_edge_data(const ECLgraph g, const int* const sp, data_type* const dist, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time) /*@Determ@*/static void sssp_edge_data(const ECLgraph g, const int* const sp, data_type* const dist, data_type* const dist_n, const int* const wl1, const int wl1size, int* const wl2, int* wl2size, const int iter, int* const time)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/ 
+  /*@FieldBug@*/ for (int idx = 0; idx < g.nodes; idx ++) { /*@NoFieldBug@*/ for (int idx = 0; idx < wl1size; idx ++) {
+  /*@-NoBoundsBug@*/ 
+
+  /*@+BoundsBug@*/ 
+  /*@FieldBug@*/ for (int idx = 0; idx <= g.nodes; idx ++) { /*@NoFieldBug@*/ for (int idx = 0; idx <= wl1size; idx ++) {
+  /*@-BoundsBug@*/ 
+
+    const int e = wl1[idx];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ const data_type s = dist[src]; /*@MixSyncBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@Atomic@*/ const data_type s = atomicRead(&dist[src]); /*@RaceBug@*/ const data_type s = dist[src]; 
+    /*@NoMixSyncBug@*/ /*@MixSyncBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ data_type s; /*@MixSyncBug@*/ const data_type s = atomicRead(&dist[src]);
+    /*@NoMixSyncBug@*/ #pragma omp critical /*@MixSyncBug@*/
+    /*@NoMixSyncBug@*/ s = dist[src]; /*@MixSyncBug@*/
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@NoOverflowBug@*/ if (s != maxval) { /*@OverflowBug@*/ {
+      const data_type new_dist = s + g.eweight[e];
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      /*@Atomic@*/ data_type d = atomicRead(&dist[dst]); /*@RaceBug@*/ data_type d = dist[dst];
+      /*@NoLivelockBug@*/ if (d > new_dist) { /*@LivelockBug@*/ if (d >= new_dist) {
+      /*@Atomic@*/ atomicWrite(&dist[dst], new_dist); /*@RaceBug@*/dist[dst] = new_dist;
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (critical_min(&dist[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@Atomic@*/ if (critical_min(&dist_n[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
+      /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+      /*@+NonDeterm@*/
+        /*@ReadWrite@*/ if (critical_max(&time[e], iter) != iter) { /*@ReadModifyWrite@*/
+          /*@ReadWrite@*/ wl2[fetch_and_add(wl2size)] = e; /*@ReadModifyWrite@*/
+        /*@ReadWrite@*/ } /*@ReadModifyWrite@*/
+      /*@-NonDeterm@*/
+        for (int j = g.nindex[dst]; j < g.nindex[dst + 1]; j++) {
+          if (critical_max(&time[j], iter) != iter) {
+            wl2[fetch_and_add(wl2size)] = j;
+          }
+        }
+      }
+    }
+    /*@+Determ@*/
+    /*@Atomic@*/ critical_min(&dist_n[src], s); /*@RaceBug@*/ dist_n[src] = s;
+    /*@-Determ@*/
+  }
+}
+//BlankLine
+
+static double CPUsssp_edge(const int src, const ECLgraph g, data_type* dist, const int* const sp)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* dist_new = malloc(g.nodes * sizeof(data_type));
+  const int size = MAX(g.edges, g.nodes);
+  int* wl1 = (int*) malloc(size * sizeof(int));
+  int* wl2 = (int*) malloc(size * sizeof(int));
+  int* time = (int*) malloc(g.edges * sizeof(int));
+  int* wl1size = malloc(sizeof(int));
+  int* wl2size = malloc(sizeof(int));
+
+  //BlankLine
+  struct timeval start, end;
+  //BlankLine
+
+  /*@NonDeterm@*/ init(src, dist, g, wl1, wl1size, time); /*@Determ@*/ init(src, dist, dist_new, g, wl1, wl1size, time);
+  //BlankLine
+
+  // iterate until no more changes
+  int iter = 0;
+  gettimeofday(&start, NULL);
+
+  do {
+    iter++;
+    *wl2size = 0;
+
+    //BlankLine
+    /*@NonDeterm@*/ sssp_edge_data(g, sp, dist, wl1, *wl1size, wl2, wl2size, iter, time); /*@Determ@*/ sssp_edge_data(g, sp, dist, dist_new, wl1, *wl1size, wl2, wl2size, iter, time);
+    //BlankLine
+    SWAP(wl1, wl2);
+    *wl1size = *wl2size;
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(dist, dist_new);
+  } while (*wl1size > 0);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+
+  //BlankLine
+  /*@NonDeterm@*/ /*@Determ@*/ free(dist_new);
+  free(wl1);
+  free(wl2);
+  free(wl1size);
+  free(wl2size);
+  free(time);
+  return runtime;
+}

@@ -1,0 +1,82 @@
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@AtomicAdd@*/ declare /*@CriticalRed@*/ declare /*@ClauseRed@*/ declare
+/*@Default@*/ declare /*@Dynamic@*/ declare
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+/*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
+
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+
+#include "indigo_tc_vertex_omp.h"
+//BlankLine
+
+static void triCounting(data_type* g_count, const int nodes, const int* const nindex, const int* const nlist)
+{
+  /*@+AtomicAdd@*/
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@-AtomicAdd@*/ 
+
+  /*@+CriticalRed@*/ 
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@-CriticalRed@*/
+  
+  /*@+ClauseRed@*/ /*@+NoRaceBug@*/
+  data_type result = 0;
+  /*@Default@*/ #pragma omp parallel for reduction(+: result) /*@Dynamic@*/ #pragma omp parallel for reduction(+: result) schedule(dynamic)
+  /*@-ClauseRed@*/ /*@-NoRaceBug@*/
+
+  /*@+ClauseRed@*/ /*@+RaceBug@*/
+  data_type result = 0;
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@-ClauseRed@*/ /*@-RaceBug@*/
+
+  /*@NoBoundsBug@*/ for (int v = 0; v < nodes; v++) { /*@BoundsBug@*/ for (int v = 0; v <= nodes; v++) {
+    data_type count = 0;
+    const int beg1 = nindex[v];
+    const int end1 = nindex[v + 1];
+    int start1 = end1;
+
+    while ((beg1 < start1) && (v < nlist[start1 - 1])) start1--;
+
+    /*@NoNbrBoundsBug@*/ for (int j = start1; j < end1; j++) { /*@NbrBoundsBug@*/ for (int j = start1; j <= end1; j++) {
+      const int u = nlist[j];
+      const int beg2 = nindex[u];
+      const int end2 = nindex[u + 1];
+      int start2 = end2;
+      while ((beg2 < start2) && (u < nlist[start2 - 1])) start2--;
+      count += (data_type)common(j + 1, end1, start2, end2, nlist);
+    }
+
+    /*@+NoRaceBug@*/
+    /*@AtomicAdd@*/ #pragma omp atomic /*@CriticalRed@*/ #pragma omp critical /*@ClauseRed@*/ 
+    /*@-NoRaceBug@*/
+
+    /*@+RaceBug@*/
+    /*@AtomicAdd@*/ /*@CriticalRed@*/ /*@ClauseRed@*/
+    /*@-RaceBug@*/
+
+    /*@AtomicAdd@*/ (*g_count) += count; /*@CriticalRed@*/ (*g_count) += count; /*@ClauseRed@*/ result += count;
+  }
+  /*@+ClauseRed@*/
+  *g_count = result;
+  /*@-ClauseRed@*/
+}
+//BlankLine
+
+static double CPUtc_vertex(data_type* count, const int nodes, const int* const nindex, const int* const nlist)
+{
+  struct timeval start, end;
+  *count = 0;
+  
+  //BlankLine
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  triCounting(count, nodes, nindex, nlist);
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  //BlankLine
+  
+  return (end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
+}

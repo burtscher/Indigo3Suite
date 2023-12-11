@@ -1,0 +1,187 @@
+/*@NonDeterm@*/ declare /*@Determ@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+/*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
+
+/*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
+/*@NoExcessThreadsBug@*/ declare /*@ExcessThreadsBug@*/ declare /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
+
+/*@+IntType@*/
+/*@Atomic@*/ typedef int data_type; /*@CudaAtomic@*/ typedef cuda::atomic<int> data_type; /*@RaceBug@*/ typedef int data_type;
+typedef int basic_t;
+/*@-IntType@*/
+
+/*@+LongType@*/
+/*@Atomic@*/ typedef unsigned long long data_type; /*@CudaAtomic@*/ typedef cuda::atomic<unsigned long long> data_type; /*@RaceBug@*/ typedef unsigned long long data_type;
+typedef unsigned long long basic_t;
+/*@-LongType@*/
+
+static const int ThreadsPerBlock = 512;
+/*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/
+//BlankLine
+
+//BlankLine
+#include "indigo_cc_vertex_cuda.h"
+//BlankLine
+
+/*@NonDeterm@*/ static __global__ void init(data_type* const label, const int size) /*@Determ@*/ static __global__ void init(data_type* const label, data_type* const label_n, const int size)
+{
+  // initialize arrays
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < size) {
+    /*@+Determ@*/
+    /*@Atomic@*/ label_n[v] = v; /*@CudaAtomic@*/ label_n[v].store(v); /*@RaceBug@*/ label_n[v] = v;
+    /*@-Determ@*/
+    /*@Atomic@*/ label[v] = v; /*@CudaAtomic@*/ label[v].store(v); /*@RaceBug@*/ label[v] = v;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static __global__ void cc(const ECLgraph g, data_type* const label, flag_t* const goagain) /*@Determ@*/ static __global__ void cc(const ECLgraph g, data_type* const label, data_type* const label_n, flag_t* const goagain)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+  /*@+NonPersist@*/
+  /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int v = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (v < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@-Persist@*/
+
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/
+
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
+
+    //BlankLine
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    /*@+NonDeterm@*/
+    /*@Atomic@*/ data_type d = atomicRead(&label[v]); /*@CudaAtomic@*/ data_type d = label[v].load(); /*@RaceBug@*/ data_type d = label[v];
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    /*@Atomic@*/ data_type d = label[v]; /*@CudaAtomic@*/ data_type d = label[v].load(); /*@RaceBug@*/ data_type d = label[v];
+    /*@-Determ@*/
+    //BlankLine
+
+    /*@+NoNbrBoundsBug@*/
+    /*@Thread@*/ for (int i = beg; i < end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % WarpSize; i < end; i += WarpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i < end; i += ThreadsPerBlock) {
+    /*@-NoNbrBoundsBug@*/
+
+    /*@+NbrBoundsBug@*/
+    /*@Thread@*/ for (int i = beg; i <= end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % WarpSize; i <= end; i += WarpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i <= end; i += ThreadsPerBlock) {
+    /*@-NbrBoundsBug@*/
+
+      const int src = g.nlist[i];
+      /*@+NonDeterm@*/
+      /*@Atomic@*/ const data_type new_label = atomicRead(&label[src]); /*@CudaAtomic@*/ const data_type new_label  = label[src].load(); /*@RaceBug@*/ const data_type new_label  = label[src];
+      /*@-NonDeterm@*/
+      /*@+Determ@*/
+      /*@Atomic@*/ const data_type new_label  = label[src]; /*@CudaAtomic@*/ const data_type new_label  = label[src].load(); /*@RaceBug@*/ const data_type new_label = label[src];
+      /*@-Determ@*/
+      /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+        /*@Atomic@*/ d = new_label; /*@CudaAtomic@*/ d = new_label.load(); /*@RaceBug@*/ d = new_label;
+        /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1; /*@RaceBug@*/ *goagain = 1;
+      }
+    }
+
+    /*@+NonDeterm@*/ /*@+Thread@*/
+    /*@Atomic@*/ atomicWrite(&label[v], d); /*@CudaAtomic@*/ label[v].store(d); /*@RaceBug@*/ suppress;
+    /*@-NonDeterm@*/ /*@-Thread@*/
+    /*@+NonDeterm@*/ /*@+Warp@*/
+    /*@Atomic@*/ atomicMin(&label[v], d); /*@CudaAtomic@*/ label[v].fetch_min(d); /*@RaceBug@*/ label[v] = d;
+    /*@-NonDeterm@*/ /*@-Warp@*/
+    /*@+NonDeterm@*/ /*@+Block@*/
+    /*@Atomic@*/ atomicMin(&label[v], d); /*@CudaAtomic@*/ label[v].fetch_min(d); /*@RaceBug@*/ label[v] = d;
+    /*@-NonDeterm@*/ /*@-Block@*/
+    /*@+Determ@*/ /*@+Thread@*/
+      /*@Atomic@*/ atomicWrite(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].store(d); /*@RaceBug@*/ suppress;
+    /*@-Determ@*/ /*@-Thread@*/
+    /*@+Determ@*/ /*@+Warp@*/
+    /*@Atomic@*/ atomicMin(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].fetch_min(d); /*@RaceBug@*/ label_n[v] = d;
+    /*@-Determ@*/ /*@-Warp@*/
+    /*@+Determ@*/ /*@+Block@*/
+    /*@Atomic@*/ atomicMin(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].fetch_min(d); /*@RaceBug@*/ label_n[v] = d;
+    /*@-Determ@*/ /*@-Block@*/
+  }
+}
+//BlankLine
+
+static double GPUcc_vertex(const ECLgraph g, basic_t* const label)
+{
+  /*@Atomic@*/ flag_t* d_goagain; /*@CudaAtomic@*/ flag_t* d_goagain; /*@RaceBug@*/ flag_t* d_goagain;
+  data_type* d_label;
+  if (cudaSuccess != cudaMalloc((void **)&d_goagain, sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_goagain\n");
+  if (cudaSuccess != cudaMalloc((void **)&d_label, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_label\n");
+  /*@+Determ@*/
+  data_type* d_label_new;
+  if (cudaSuccess != cudaMalloc((void **)&d_label_new, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_label_new\n");
+  /*@-Determ@*/
+  //BlankLine
+
+  /*@+NonPersist@*/
+  /*@Thread@*/ const int blocks = (g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)g.nodes * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = g.nodes;
+  /*@-NonPersist@*/
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+  //BlankLine
+
+  /*@+NonDeterm@*/ /*@+NonPersist@*/
+  /*@Thread@*/ init<<<blocks, ThreadsPerBlock>>>(d_label, g.nodes); /*@Warp@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_label, g.nodes); /*@Block@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_label, g.nodes);
+  /*@-NonDeterm@*/ /*@-NonPersist@*/
+  /*@+Determ@*/ /*@+NonPersist@*/
+  /*@Thread@*/ init<<<blocks, ThreadsPerBlock>>>(d_label, d_label_new, g.nodes); /*@Warp@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_label, d_label_new, g.nodes); /*@Block@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_label, d_label_new, g.nodes);
+  /*@-NonDeterm@*/ /*@-NonPersist@*/
+  /*@+Persist@*/
+  /*@NonDeterm@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_label, g.nodes); /*@Determ@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_label, d_label_new, g.nodes);
+  /*@-Persist@*/
+  //BlankLine
+
+  // iterate until no more changes
+  int goagain;
+  int iter = 0;
+
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+  do {
+    iter++;
+    goagain = 0;
+    if (cudaSuccess != cudaMemcpy(d_goagain, &goagain, sizeof(flag_t), cudaMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of go_again to device failed\n");
+    //BlankLine
+
+    /*@NonDeterm@*/ cc<<<blocks, ThreadsPerBlock>>>(g, d_label, d_goagain); /*@Determ@*/ cc<<<blocks, ThreadsPerBlock>>>(g, d_label, d_label_new, d_goagain);
+    //BlankLine
+
+    if (cudaSuccess != cudaMemcpy(&goagain, d_goagain, sizeof(flag_t), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of go_again from device failed\n");
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(d_label, d_label_new);
+  } while (goagain);
+  //BlankLine
+
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  CheckCuda();
+  /*@NonDeterm@*/ if (cudaSuccess != cudaMemcpy(label, d_label, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of label from device failed\n"); /*@Determ@*/ if (cudaSuccess != cudaMemcpy(label, d_label_new, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of label from device failed\n");
+  //BlankLine
+
+  cudaFree(d_goagain);
+  cudaFree(d_label);
+  return runtime;
+}

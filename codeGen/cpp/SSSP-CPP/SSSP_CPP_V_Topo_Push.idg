@@ -1,0 +1,127 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_sssp_vertex_cpp.h"
+/*@Race1@*/ typedef data_type shared_t; /*@Race2@*/ typedef std::atomic<data_type> shared_t; /*@Atomic@*/ typedef std::atomic<data_type> shared_t;
+/*@Race1@*/ typedef std::atomic<bool> flag_t; /*@Race2@*/ typedef bool flag_t; /*@Atomic@*/ typedef std::atomic<bool> flag_t; 
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+Determ@*/
+/*@Race1@*/ suppress /*@Race2@*/ /*@Atomic@*/ 
+/*@-Determ@*/
+
+/*@NonDeterm@*/ static void init(const int src, shared_t* const dist, const int size) /*@Determ@*/ static void init(const int src, shared_t* const dist, shared_t* const dist_n, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    const data_type temp = (v == src) ? 0 : maxval;
+    /*@NonDeterm@*/ /*@Determ@*/ dist_n[v] = temp;
+    dist[v] = temp;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void sssp(const ECLgraph g, shared_t* const dist, flag_t &goagain, const int threadID, const int threadCount) /*@Determ@*/ static void sssp(const ECLgraph g, shared_t* const dist, shared_t* const dist_n, flag_t &goagain, const int threadID, const int threadCount)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    const int beg = g.nindex[v];
+    const int end = g.nindex[v + 1];
+    const data_type s = dist[v];
+    //BlankLine
+
+    /*@NoRangeBug@*/ if (s != maxval) { /*@RangeBug@*/
+      bool updated = false;
+      /*@NborNoBoundsBug@*/ for (int i = beg; i < end; i++) { /*@NborBoundsBug@*/ for (int i = beg; i <= end; i++) { 
+        const int dst = g.nlist[i];
+        const data_type new_dist = s + g.eweight[i];
+
+        /*@+NonDeterm@*/ /*@+ReadWrite@*/
+        const data_type d = dist[dst];
+        if (d > new_dist) {
+          dist[dst] = new_dist;
+        /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+        /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+        /*@Race1@*/ suppress /*@Race2@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
+        /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+        /*@+Determ@*/ /*@+ReadModifyWrite@*/
+        /*@Race1@*/ suppress /*@Race2@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
+        /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+          updated = true;
+        }
+      }
+      if (updated) {
+        goagain = 1;
+      }
+    /*@NoRangeBug@*/ } /*@RangeBug@*/
+  }
+}
+//BlankLine
+
+static double CPUsssp_vertex(const int src, const ECLgraph& g, data_type* const distance, const int threadCount)
+{
+  shared_t* dist = (shared_t*)distance;
+  /*@NonDeterm@*/ /*@Determ@*/ shared_t* dist_new = new shared_t [g.nodes];
+  std::thread threadHandles[threadCount];
+  //BlankLine
+
+  /*@NonDeterm@*/ init(src, dist, g.nodes); /*@Determ@*/ init(src, dist, dist_new, g.nodes);
+  
+  //BlankLine
+  timeval start, end;
+  gettimeofday(&start, NULL);
+  //BlankLine
+
+  // iterate until no more changes
+  flag_t goagain;
+  int iter = 0;
+  do {
+    iter++;
+    goagain = 0;
+    
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@NonDeterm@*/ threadHandles[i] = std::thread(sssp, g, dist, std::ref(goagain), i, threadCount); /*@Determ@*/ threadHandles[i] = std::thread(sssp, g, dist, dist_new, std::ref(goagain), i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ std::swap(dist, dist_new);
+  } while (goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ delete [] (iter % 2 ? dist : dist_new);
+  return runtime;
+}

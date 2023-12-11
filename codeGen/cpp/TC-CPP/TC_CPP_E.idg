@@ -1,0 +1,118 @@
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@GlobalAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ #include <mutex>
+/*@Block@*/ declare /*@Cyclic@*/ declare
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@IntType@*/ typedef int basic_t; /*@LongType@*/ typedef unsigned long long basic_t;
+
+#include "indigo_tc_edge_cpp.h"
+//BlankLine
+
+/*@+NoRaceBug@*/
+/*@GlobalAdd@*/ typedef std::atomic<basic_t> shared_t; /*@Reduction@*/ typedef basic_t shared_t; /*@Critical@*/ typedef basic_t shared_t;
+/*@-NoRaceBug@*/ 
+/*@+RaceBug@*/ 
+typedef basic_t shared_t;
+/*@-RaceBug@*/ 
+
+/*@+Critical@*/ 
+std::mutex mutex;
+//+BlankLine
+/*@-Critical@*/ 
+
+static void triCounting(shared_t& g_count, const int edges, const int* const nindex, const int* const nlist, const int* const sp, const int threadID, const int threadCount)
+{
+  basic_t count = 0;
+  
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)edges / threadCount; /*@PrecedenceBug@*/ declare const int begEdge = threadID * edges / threadCount;
+  /*@NoPrecedenceBug@*/ const int endEdge = (threadID + 1) * (long)edges / threadCount; /*@PrecedenceBug@*/ const int endEdge = (threadID + 1) * edges / threadCount;
+  /*@-Block@*/
+  
+  /*@+Cyclic@*/
+  /*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+  const int top = edges;
+  /*@-Cyclic@*/
+  
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int e = begEdge; e < endEdge; e++) { /*@Cyclic@*/ for (int e = threadID; e < top; e += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int e = begEdge; e <= endEdge; e++) { /*@Cyclic@*/ for (int e = threadID; e <= top; e += threadCount) { 
+  /*@-BoundsBug@*/
+  
+    const int src = sp[e];
+    const int dst = nlist[e];
+    //BlankLine
+
+    if (src > dst) {
+      const int beg1 = nindex[dst];
+      const int end1 = nindex[dst + 1];
+
+      /*@NoNbrBoundsBug@*/ for (int i = beg1; i < end1 && nlist[i] < dst; i++) { /*@NbrBoundsBug@*/ for (int i = beg1; i <= end1 && nlist[i] < dst; i++) {
+        const int u = nlist[i];
+        int beg2 = nindex[src];
+        int end2 = nindex[src + 1];
+        if (find(u, beg2, end2, nlist)) count++;
+      }
+    }
+  }
+  /*@+NoRaceBug@*/ 
+  /*@GlobalAdd@*/ g_count += count; /*@Reduction@*/ g_count = count; /*@Critical@*/ 
+  /*@-NoRaceBug@*/ 
+
+  /*@+Critical@*/ /*@+NoRaceBug@*/
+  mutex.lock();
+  g_count += count;
+  mutex.unlock();
+  /*@-Critical@*/ /*@-NoRaceBug@*/
+
+  /*@+RaceBug@*/ 
+  /*@GlobalAdd@*/ g_count += count; /*@Reduction@*/ g_count += count; /*@Critical@*/ g_count += count;
+  /*@-RaceBug@*/ 
+}
+//BlankLine
+
+static double CPUtc_edge(basic_t &count_orig, const int edges, const int* const nindex, const int* const nlist, const int* const sp, const int threadCount)
+{
+  shared_t count = 0;
+  std::thread threadHandles[threadCount];
+  /*@+Reduction@*/
+  basic_t localSums[threadCount];
+  /*@-Reduction@*/
+  //BlankLine
+  
+  timeval start, end;
+  count = 0;
+  
+  //BlankLine
+  gettimeofday(&start, NULL);
+  //BlankLine
+  
+  for (int i = 0; i < threadCount; ++i) {
+    /*@+GlobalAdd@*/ 
+    threadHandles[i] = std::thread(triCounting, std::ref(count), edges, nindex, nlist, sp, i, threadCount);
+    /*@-GlobalAdd@*/
+    /*@+Critical@*/
+    threadHandles[i] = std::thread(triCounting, std::ref(count), edges, nindex, nlist, sp, i, threadCount);
+    /*@-Critical@*/
+    /*@+Reduction@*/
+    threadHandles[i] = std::thread(triCounting, std::ref(localSums[i]), edges, nindex, nlist, sp, i, threadCount);
+    /*@-Reduction@*/
+  }
+  for (int i = 0; i < threadCount; ++i) {
+    threadHandles[i].join();
+    /*@+Reduction@*/
+    count += localSums[i]; //sum reduction
+    /*@-Reduction@*/
+  }
+  
+  //BlankLine
+  gettimeofday(&end, NULL);
+  //BlankLine
+
+  count_orig = count;
+  return (end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
+}

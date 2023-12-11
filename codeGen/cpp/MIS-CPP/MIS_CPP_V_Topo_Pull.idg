@@ -1,0 +1,161 @@
+/*@IntType@*/ typedef unsigned int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_mis_vertex_cpp.h"
+/*@Atomic@*/ typedef std::atomic<unsigned char> shared_t; /*@RaceBug@*/ typedef unsigned char shared_t;
+typedef std::atomic<bool> flag_t;
+//BlankLine
+
+/*@Block@*/ /*@Cyclic@*/
+/*@Atomic@*/ /*@RaceBug@*/ 
+/*@NonDeterm@*/ /*@CopyDeterm@*/ /*@MergeDeterm@*/
+/*@NoFieldBug@*/ /*@FieldBug@*/
+/*@NoBoundsBug@*/ /*@BoundsBug@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/
+
+/*@+Cyclic@*/
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Cyclic@*/
+
+/*@+NonDeterm@*/
+static void init(data_type* const priority, shared_t* const status, const int size)
+/*@-NonDeterm@*/
+/*@+CopyDeterm@*/
+static void init(data_type* const priority, shared_t* const status, shared_t* const status_n, const int size)
+/*@-CopyDeterm@*/
+/*@+MergeDeterm@*/
+static void init(data_type* const priority, shared_t* const status, shared_t* const status_n, const int size) 
+/*@-MergeDeterm@*/
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++)
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
+    /*@NoLivelockBug@*/ /*@LivelockBug@*/ priority[v] = priority[v] % 100;
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ status_n[v] = undecided; /*@MergeDeterm@*/ status_n[v] = undecided;
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/
+static void mis(const ECLgraph& g, const data_type* const priority, shared_t* const status, bool &goagain, const int threadID, const int threadCount)
+/*@-NonDeterm@*/
+/*@+CopyDeterm@*/
+static void mis(const ECLgraph& g, const data_type* const priority, shared_t* const status, shared_t* const status_n, bool &goagain, const int threadID, const int threadCount)
+/*@-CopyDeterm@*/
+/*@+MergeDeterm@*/
+static void mis(const ECLgraph& g, const data_type* const priority, shared_t* const status, shared_t* const status_n, bool &goagain, const int threadID, const int threadCount)
+/*@-MergeDeterm@*/
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+
+  /*@+Block@*/
+  /*@NoPrecedenceBug@*/ const int begNode = threadID * (long)N / threadCount; /*@PrecedenceBug@*/ const int begNode = threadID * ((long)N / threadCount); 
+  /*@NoPrecedenceBug@*/ const int endNode = (threadID + 1) * (long)N / threadCount; /*@PrecedenceBug@*/ const int endNode = (threadID + 1) * ((long)N / threadCount); 
+  /*@-Block@*/ 
+  
+  /*@+Cyclic@*/
+  const int top = N;
+  /*@-Cyclic@*/
+
+  /*@+NoBoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v < endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v < top; v += threadCount) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@Block@*/ for (int v = begNode; v <= endNode; v++) { /*@Cyclic@*/ for (int v = threadID; v <= top; v += threadCount) { 
+  /*@-BoundsBug@*/
+    if (status[v] == undecided) {
+      int i;
+      // try to find a non-excluded neighbor whose priority is higher
+      for (i = g.nindex[v]; i < g.nindex[v + 1]; i++) {
+        /*@+NoLivelockBug@*/ 
+        if ((status[g.nlist[i]] != excluded) && ((priority[g.nlist[i]] > priority[v]) || ((priority[v] == priority[g.nlist[i]]) && (v < g.nlist[i])))) {
+        /*@-NoLivelockBug@*/ 
+        /*@+LivelockBug@*/ 
+        if ((status[g.nlist[i]] != excluded) && (priority[g.nlist[i]] >= priority[v])) {
+        /*@-LivelockBug@*/ 
+          // found such a neighbor -> check if neighbor is included
+          if (status[g.nlist[i]] == included) {
+            // found included neighbor -> exclude self
+            /*@NonDeterm@*/ status[v] = excluded; /*@CopyDeterm@*/ status_n[v] = excluded; /*@MergeDeterm@*/ status_n[v] = excluded;
+          } else { 
+            goagain = true;
+          }
+          break;
+        }
+      }
+      if (i >= g.nindex[v + 1]) {
+        // no such neighbor -> v is "included"
+        /*@NonDeterm@*/ status[v] = included; /*@CopyDeterm@*/ status_n[v] = included; /*@MergeDeterm@*/ status_n[v] = included; 
+      }
+    }
+  }
+}
+//BlankLine
+
+static double CPPmis_vertex(const ECLgraph& g, data_type* const priority, unsigned char* const status_orig, const int threadCount)
+{
+  shared_t* status = (shared_t*)status_orig;
+  /*@NonDeterm@*/ /*@CopyDeterm@*/ shared_t* status_new = new shared_t [g.nodes]; /*@MergeDeterm@*/ shared_t* status_new = new shared_t [g.nodes]; 
+  std::thread threadHandles[threadCount];
+  //BlankLine
+
+  /*@NonDeterm@*/ init(priority, status, g.nodes); /*@CopyDeterm@*/ init(priority, status, status_new, g.nodes); /*@MergeDeterm@*/ init(priority, status, status_new, g.nodes);
+  
+  //BlankLine
+  timeval beg, end;
+  gettimeofday(&beg, NULL);
+  //BlankLine
+
+  bool goagain;
+  int iter = 0;
+  do {
+    iter++;
+    goagain = false;
+    
+    //BlankLine
+    for (int i = 0; i < threadCount; ++i) {
+      /*@+NonDeterm@*/
+      threadHandles[i] = std::thread(mis, g, priority, status, std::ref(goagain), i, threadCount);
+      /*@-NonDeterm@*/
+      /*@+CopyDeterm@*/
+      threadHandles[i] = std::thread(mis, g, priority, status, status_new, std::ref(goagain), i, threadCount);
+      /*@-CopyDeterm@*/
+      /*@+MergeDeterm@*/
+      threadHandles[i] = std::thread(mis, g, priority, status, status_new, std::ref(goagain), i, threadCount);
+      /*@-MergeDeterm@*/
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ std::copy((unsigned char*)status_new, (unsigned char*)status_new + g.nodes, (unsigned char*)status); /*@MergeDeterm@*/
+    /*@+MergeDeterm@*/
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i] = std::thread(updateUndecided, (unsigned char*)status, (unsigned char*)status_new, g.nodes, i, threadCount);
+    }
+    for (int i = 0; i < threadCount; ++i) {
+      threadHandles[i].join();
+    }
+    //BlankLine
+    /*@-MergeDeterm@*/
+    
+  } while (goagain);
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec - beg.tv_sec + (end.tv_usec - beg.tv_usec) / 1000000.0;
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@CopyDeterm@*/ delete [] status_new; /*@MergeDeterm@*/ delete [] status_new;  //delete [] ((iter % 2) ? status_new : status);
+  return runtime;
+}

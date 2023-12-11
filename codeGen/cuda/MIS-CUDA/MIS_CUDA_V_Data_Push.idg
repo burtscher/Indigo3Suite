@@ -1,0 +1,204 @@
+/*@NonDeterm@*/ declare /*@Determ@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ declare
+/*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t;
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+
+static const int ThreadsPerBlock = 512;
+/*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/
+//BlankLine
+
+#include "indigo_mis_vertex_cuda.h"
+//BlankLine
+
+/*@+NonDeterm@*/
+static __global__ void init(data_type* const priority, flag_t* const status, const int size, int* const wl1, int* const wlsize)
+/*@-NonDeterm@*/
+/*@+Determ@*/
+static __global__ void init(data_type* const priority, flag_t* const status, flag_t* const status_n, const int size, int* const wl1, int* const wlsize)
+/*@-Determ@*/
+{
+  // initialize arrays
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < size)
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
+    
+    //BlankLine
+    // initialize worklist
+    wl1[v] = v;
+  }
+  if (v == 0) {
+    *wlsize = size;
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/
+static __global__ void mis(const ECLgraph g, const data_type* const priority, flag_t* const status, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size)
+/*@-NonDeterm@*/
+/*@+Determ@*/
+static __global__ void mis(const ECLgraph g, const data_type* const priority, flag_t* const status, flag_t* const status_n, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size)
+/*@-Determ@*/
+{
+  /*@Thread@*/ /*@Warp@*/ const int lane = threadIdx.x % WarpSize; /*@Block@*/ 
+  
+  // go over all nodes in worklist
+  /*@+NonPersist@*/
+  /*@Thread@*/ int w = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int w = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int w = blockIdx.x;
+  if (w < wl1size) {
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@Thread@*/ for (int w = tid; w < wl1size; w += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int w = tid; w < wl1size; w += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int w = tid; w < wl1size; w += gridDim.x) {
+  /*@-Persist@*/
+  
+    //BlankLine
+    int v = wl1[w];
+    /*@+Thread@*/
+    /*@Atomic@*/ if (atomicRead(&status[v]) == undecided) { /*@CudaAtomic@*/ if (status[v].load() == undecided) {
+    /*@-Thread@*/
+    /*@+Warp@*/
+    /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[v].load() == undecided))) {
+    /*@-Warp@*/
+    /*@+Block@*/
+    /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v].load() == undecided))) {
+    /*@-Block@*/
+      int i = g.nindex[v];
+      // try to find a non-excluded neighbor whose priority is higher
+      /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+        /*@+Atomic@*/ 
+        while ((i < g.nindex[v + 1]) && ((atomicRead(&status[g.nlist[i]]) == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-Atomic@*/
+        /*@+CudaAtomic@*/ 
+        while ((i < g.nindex[v + 1]) && ((status[g.nlist[i]].load() == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-CudaAtomic@*/
+          i++;
+        }
+      /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      /*@Thread@*/ if (i < g.nindex[v + 1]) { /*@Warp@*/ if (__any_sync(~0, (lane == 0) && (i < g.nindex[v + 1]))) { /*@Block@*/ if (__syncthreads_or((threadIdx.x == 0) && (i < g.nindex[v + 1]))) {
+        // found such a neighbor -> status still unknown
+        /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+          wl2[atomicAdd(wl2size, 1)] = v;
+        /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      } else {
+        // no such neighbor -> all neighbors are "excluded" and v is "included"
+        /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+          /*@+NonDeterm@*/
+          /*@Atomic@*/ atomicWrite(&status[v], included); /*@CudaAtomic@*/ status[v].store(included);
+          /*@-NonDeterm@*/
+          /*@+Determ@*/
+          /*@Atomic@*/ atomicWrite(&status_n[v], included); /*@CudaAtomic@*/ status_n[v].store(included);
+          /*@-Determ@*/
+        /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+        
+        /*@Thread@*/ for (int j = g.nindex[v]; j < g.nindex[v + 1]; j++) { /*@Warp@*/ for (int j = g.nindex[v] + lane; j < g.nindex[v + 1]; j += WarpSize) { /*@Block@*/ for (int j = g.nindex[v] + threadIdx.x; j < g.nindex[v + 1]; j += ThreadsPerBlock) {
+          /*@+NonDeterm@*/
+          /*@Atomic@*/ atomicWrite(&status[g.nlist[j]], excluded); /*@CudaAtomic@*/ status[g.nlist[j]].store(excluded);
+          /*@-NonDeterm@*/
+          /*@+Determ@*/
+          /*@Atomic@*/ atomicWrite(&status_n[g.nlist[j]], excluded); /*@CudaAtomic@*/ status_n[g.nlist[j]].store(excluded);
+          /*@-Determ@*/
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double GPUmis_vertex(const ECLgraph g, data_type* const priority, int* const status)
+{
+  data_type* d_priority;
+  if (cudaSuccess != cudaMalloc((void **)&d_priority, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_priority\n");
+  flag_t* d_status;
+  if (cudaSuccess != cudaMalloc((void **)&d_status, g.nodes * sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_status\n");
+  /*@+Determ@*/
+  flag_t* d_status_new;
+  if (cudaSuccess != cudaMalloc((void **)&d_status_new, g.nodes * sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_status_new\n");
+  /*@-Determ@*/
+  //BlankLine
+  
+  int* d_wl1;
+  if (cudaSuccess != cudaMalloc((void **)&d_wl1, g.nodes * sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl1\n");
+  int* d_wl1size;
+  if (cudaSuccess != cudaMalloc((void **)&d_wl1size, sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl1size\n");
+
+  int* d_wl2;
+  if (cudaSuccess != cudaMalloc((void **)&d_wl2, g.nodes * sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl2\n");
+  int* d_wl2size;
+  if (cudaSuccess != cudaMalloc((void **)&d_wl2size, sizeof(int))) fprintf(stderr, "ERROR: could not allocate d_wl2size\n");
+
+  int wlsize;
+
+  //BlankLine
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0, false);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+  
+  //BlankLine
+  /*@NonDeterm@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes, d_wl1, d_wl1size); /*@Determ@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes, d_wl1, d_wl1size);
+  //BlankLine
+  if (cudaSuccess != cudaMemcpy(&wlsize, d_wl1size, sizeof(int), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of wlsize from device d_wl1size failed\n");
+ 
+  //BlankLine
+  struct timeval beg, end;
+  gettimeofday(&beg, NULL);
+  //BlankLine
+
+  int iter = 0;
+  do {
+    iter++;
+    cudaMemset(d_wl2size, 0, sizeof(int));
+    /*@+NonPersist@*/
+    /*@Thread@*/ const int blocks = (wlsize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)wlsize * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = wlsize;
+    /*@-NonPersist@*/
+    //BlankLine
+
+    /*@+NonDeterm@*/
+    mis<<<blocks, ThreadsPerBlock>>>(g, d_priority, d_status, d_wl1, wlsize, d_wl2, d_wl2size); 
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    mis<<<blocks, ThreadsPerBlock>>>(g, d_priority, d_status, d_status_new, d_wl1, wlsize, d_wl2, d_wl2size);
+    /*@-Determ@*/
+    //BlankLine
+
+    if (cudaSuccess != cudaMemcpy(&wlsize, d_wl2size, sizeof(int), cudaMemcpyDeviceToHost)) { fprintf(stderr, "ERROR: copying of wlsize from device failed\n"); break; }
+    SWAP(d_wl1, d_wl2);
+    SWAP(d_wl1size, d_wl2size);
+    /*@NonDeterm@*/ /*@Determ@*/ if (cudaSuccess != cudaMemcpy(d_status, d_status_new, g.nodes * sizeof(flag_t), cudaMemcpyDeviceToDevice)) fprintf(stderr, "ERROR: copying of d_status_new to d_status on device failed\n");
+  } while (wlsize > 0);
+
+  //BlankLine
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec - beg.tv_sec + (end.tv_usec - beg.tv_usec) / 1000000.0;
+  //BlankLine
+
+  CheckCuda();
+  if (cudaSuccess != cudaMemcpy(status, d_status, g.nodes * sizeof(flag_t), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of status from device failed\n"); 
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ cudaFree(d_status_new);
+  cudaFree(d_status);
+  cudaFree(d_priority);
+  cudaFree(d_wl1);
+  cudaFree(d_wl1size);
+  cudaFree(d_wl2);
+  cudaFree(d_wl2size);
+  return runtime;
+}

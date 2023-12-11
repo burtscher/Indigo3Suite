@@ -1,0 +1,261 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_mis_edge_omp.h"
+//BlankLine
+
+/*@Atomic@*/ /*@RaceBug@*/ 
+/*@NoGuardBug@*/ /*@GuardBug@*/
+/*@NonDeterm@*/ /*@CopyDeterm@*/ /*@MergeDeterm@*/
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+/*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
+
+/*@+RaceBug@*/
+/*@NonDeterm@*/ /*@CopyDeterm@*/ suppress /*@MergeDeterm@*/ suppress
+/*@-Racebug@*/
+
+/*@+NonDeterm@*/ 
+static void init(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status, data_type* const lost, int* const wl1, int* wlsize) 
+/*@-NonDeterm@*/ 
+/*@+CopyDeterm@*/ 
+static void init(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status, data_type* const status_n, data_type* const lost, int* const wl1, int* wlsize) 
+/*@-CopyDeterm@*/ 
+/*@+MergeDeterm@*/ 
+static void init(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status, data_type* const status_n, data_type* const lost, int* const wl1, int* wlsize) 
+/*@-MergeDeterm@*/
+{
+  // initialize arrays
+  for (int v = 0; v < g.nodes; v++)
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (int) * 8));
+    status[v] = undecided;
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ status_n[v] = undecided; /*@MergeDeterm@*/ status_n[v] = undecided;
+    lost[v] = 0;
+  }
+  
+  *wlsize = 0;
+  for (int e = 0; e < g.edges; e++)
+  {
+    // initialize worklist
+    if (sp[e] < g.nlist[e]) {
+      wl1[(*wlsize)++] = e;
+    }
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/ 
+static void mis(const ECLgraph g, const int* const sp, const data_type* const priority, data_type* const status, data_type* const lost, const int* const wl1, const int wl1size, int* const wl2, int* wl2size) 
+/*@-NonDeterm@*/ 
+/*@+MergeDeterm@*/ 
+static void mis(const ECLgraph g, const int* const sp, const data_type* const priority, data_type* const status, data_type* const status_n, data_type* const lost, const int* const wl1, const int wl1size, int* const wl2, int* wl2size) 
+/*@-MergeDeterm@*/
+/*@+CopyDeterm@*/ 
+static void mis(const ECLgraph g, const int* const sp, const data_type* const priority, data_type* const status, data_type* const status_n, data_type* const lost, const int* const wl1, const int wl1size, int* const wl2, int* wl2size)
+/*@-CopyDeterm@*/
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/
+  /*@NoFieldBug@*/ for (int w = 0; w < wl1size; w++) { /*@FieldBug@*/ for (int w = 0; w < g.edges; w++) {
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@NoFieldBug@*/ for (int w = 0; w <= wl1size; w++) { /*@FieldBug@*/ for (int w = 0; w <= g.edges; w++) {
+  /*@-BoundsBug@*/
+  // go over all edges in wl1
+
+    int e = wl1[w];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    
+    // if one is included, exclude the other
+    /*@Atomic@*/ if (atomicRead(&status[src]) == included) { /*@RaceBug@*/ if (status[src] == included) { /*@GuardBug@*/ if (atomicRead(&status[src]) == included) {
+      /*@+Atomic@*/
+      /*@NonDeterm@*/ atomicWrite(&status[dst], excluded); /*@CopyDeterm@*/ atomicWrite(&status_n[dst], excluded); /*@MergeDeterm@*/ atomicWrite(&status_n[dst], excluded);
+      /*@-Atomic@*/
+      /*@+RaceBug@*/
+      /*@NonDeterm@*/ status[dst] = excluded; /*@CopyDeterm@*/ status_n[dst] = excluded; /*@MergeDeterm@*/ status_n[dst] = excluded;
+      /*@-RaceBug@*/
+    }
+    /*@Atomic@*/ else if (atomicRead(&status[dst]) == included) { /*@RaceBug@*/ else if (status[dst] == included) {
+      /*@+Atomic@*/
+      /*@NonDeterm@*/ atomicWrite(&status[src], excluded); /*@CopyDeterm@*/ atomicWrite(&status_n[src], excluded); /*@MergeDeterm@*/ atomicWrite(&status_n[src], excluded);
+      /*@-Atomic@*/
+      /*@+RaceBug@*/
+      /*@NonDeterm@*/ status[src] = excluded; /*@CopyDeterm@*/ status_n[src] = excluded; /*@MergeDeterm@*/ status_n[src] = excluded;
+      /*@-RaceBug@*/
+    }
+    // if neither included nor excluded -> mark lower as lost
+    /*@Atomic@*/ else if (atomicRead(&status[src]) != excluded && atomicRead(&status[dst]) != excluded) { /*@RaceBug@*/ else if (status[src] != excluded && status[dst] != excluded) { 
+      if (priority[src] < priority[dst]) {
+        atomicWrite(&lost[src], 1);
+      } else {
+        atomicWrite(&lost[dst], 1);
+      }
+    }
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/ 
+static void mis_vertex_pass(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status, data_type* const lost, const int* const wl1, const int wl1size, int* const wl2, int* wl2size)
+/*@-NonDeterm@*/ 
+/*@+MergeDeterm@*/ 
+static void mis_vertex_pass(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status, data_type* const status_n, data_type* const lost, const int* const wl1, const int wl1size, int* const wl2, int* wl2size)
+/*@-MergeDeterm@*/
+/*@+CopyDeterm@*/ 
+static void mis_vertex_pass(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status, data_type* const status_n, data_type* const lost, const int* const wl1, const int wl1size, int* const wl2, int* wl2size)
+/*@-CopyDeterm@*/
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  /*@+NoBoundsBug@*/
+  /*@NoFieldBug@*/ for (int w = 0; w < wl1size; w++) { /*@FieldBug@*/ for (int w = 0; w < g.edges; w++) {
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/
+  /*@NoFieldBug@*/ for (int w = 0; w <= wl1size; w++) { /*@FieldBug@*/ for (int w = 0; w <= g.edges; w++) {
+  /*@-BoundsBug@*/    
+    const int e = wl1[w];
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+    
+    // if src node won
+    if (lost[src] == 0) { 
+      /*@+Atomic@*/
+      /*@NonDeterm@*/ if (atomicRead(&status[src]) == undecided) { /*@CopyDeterm@*/ if (status[src] == undecided) { /*@MergeDeterm@*/ if (status[src] == undecided) {
+      /*@-Atomic@*/
+      /*@+RaceBug@*/
+      if (status[src] == undecided) {  
+      /*@-RaceBug@*/
+      // and is undecided -> include
+        /*@+Atomic@*/
+        /*@NonDeterm@*/ atomicWrite(&status[src], included); /*@CopyDeterm@*/ atomicWrite(&status_n[src], included); /*@MergeDeterm@*/ atomicWrite(&status_n[src], included);
+        /*@-Atomic@*/
+        /*@+RaceBug@*/
+        /*@NonDeterm@*/ status[src] = included; /*@CopyDeterm@*/ status_n[src] = included; /*@MergeDeterm@*/ status_n[src] = included;
+        /*@-RaceBug@*/
+      }
+    }
+    // if dst node won
+    if (lost[dst] == 0) { 
+      /*@+NoGuardBug@*/
+      /*@NonDeterm@*/ if (atomicRead(&status[dst]) == undecided) { /*@CopyDeterm@*/ if (status[dst] == undecided) { /*@MergeDeterm@*/ if (status[dst] == undecided) {
+      /*@-NoGuardBug@*/
+
+ 
+      /*@+GuardBug@*/ 
+      /*@NonDeterm@*/ if (status[dst] == undecided) {  /*@CopyDeterm@*/ suppress /*@MergeDeterm@*/ suppress
+      /*@-GuardBug@*/
+      // and is undecided -> include
+      
+          /*@+Atomic@*/
+          /*@NonDeterm@*/ atomicWrite(&status[dst], included); /*@CopyDeterm@*/ atomicWrite(&status_n[dst], included); /*@MergeDeterm@*/ atomicWrite(&status_n[dst], included);
+          /*@-Atomic@*/
+          /*@+RaceBug@*/
+          /*@NonDeterm@*/ status[dst] = included; /*@CopyDeterm@*/ status_n[dst] = included; /*@MergeDeterm@*/ status_n[dst] = included;
+          /*@-RaceBug@*/
+          
+      }
+    }
+    if (atomicRead(&status[src]) == undecided || atomicRead(&status[dst]) == undecided) { 
+      // if either node is still undecided, keep edge in WL
+      wl2[criticalAdd(wl2size, 1)] = e;
+    }
+  }
+}
+//BlankLine
+
+static double OMPmis_edge(const ECLgraph g, const int* const sp, data_type* const priority, data_type* const status)
+{
+  /*@NonDeterm@*/ /*@CopyDeterm@*/ data_type* status_new = malloc(g.nodes * sizeof(data_type)); /*@MergeDeterm@*/ data_type* status_new = malloc(g.nodes * sizeof(data_type)); 
+  data_type* lost = malloc(g.nodes * sizeof(data_type));
+  const int size = MAX(g.edges, g.nodes);
+  int* wl1 = malloc(size * sizeof(int));
+  int* wl2 = malloc(size * sizeof(int));
+  int* wl1size = malloc(size * sizeof(int));
+  int* wl2size = malloc(size * sizeof(int));
+  //BlankLine
+
+  /*@+NonDeterm@*/ 
+  init(g, sp, priority, status, lost, wl1, wl1size); 
+  /*@-NonDeterm@*/
+  /*@+CopyDeterm@*/ 
+  init(g, sp, priority, status, status_new, lost, wl1, wl1size);
+  /*@-CopyDeterm@*/ 
+  /*@+MergeDeterm@*/ 
+  init(g, sp, priority, status, status_new, lost, wl1, wl1size);
+  /*@-MergeDeterm@*/ 
+  
+  //BlankLine
+  struct timeval beg, end;
+  gettimeofday(&beg, NULL);
+  //BlankLine
+
+  int iter = 0;
+  do {
+    iter++;
+    *wl2size = 0;
+    
+    //BlankLine
+    // edge pass
+    /*@+NonDeterm@*/ 
+    mis(g, sp, priority, status, lost, wl1, *wl1size, wl2, wl2size); 
+    /*@-NonDeterm@*/ 
+    /*@+CopyDeterm@*/ 
+    mis(g, sp, priority, status, status_new, lost, wl1, *wl1size, wl2, wl2size); 
+    /*@-CopyDeterm@*/ 
+    /*@+MergeDeterm@*/ 
+    mis(g, sp, priority, status, status_new, lost, wl1, *wl1size, wl2, wl2size);
+    /*@-MergeDeterm@*/ 
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ for (int i = 0; i < g.nodes; i++) status[i] = status_new[i]; /*@MergeDeterm@*/ updateFromWorklist(g, sp, status, status_new, wl1, *wl1size);
+    
+    //BlankLine
+    // vertex pass
+    /*@+NonDeterm@*/
+    mis_vertex_pass(g, sp, priority, status, lost, wl1, *wl1size, wl2, wl2size);
+    /*@-NonDeterm@*/ 
+    /*@+MergeDeterm@*/ 
+    mis_vertex_pass(g, sp, priority, status, status_new, lost, wl1, *wl1size, wl2, wl2size);
+    /*@-MergeDeterm@*/
+    /*@+CopyDeterm@*/ 
+    mis_vertex_pass(g, sp, priority, status, status_new, lost, wl1, *wl1size, wl2, wl2size);
+    /*@-CopyDeterm@*/
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@CopyDeterm@*/ for (int i = 0; i < g.nodes; i++) status[i] = status_new[i]; /*@MergeDeterm@*/ updateFromWorklist(g, sp, status, status_new, wl1, *wl1size);
+    
+    //BlankLine
+    for (int i = 0; i < g.nodes; i++) {
+      lost[i] = 0;
+    }
+    SWAP(wl1, wl2);
+    *wl1size = *wl2size;
+    
+  } while (*wl1size > 0);
+
+  // include all remaining nodes that have no edges
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+  for (int i = 0; i < g.nodes; i++) {
+    if (status[i] == undecided)
+      status[i] = included;
+  }
+
+  //BlankLine
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec - beg.tv_sec + (end.tv_usec - beg.tv_usec) / 1000000.0;
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@CopyDeterm@*/ free(status_new); /*@MergeDeterm@*/ free(status_new);
+  free(lost);
+  free(wl1);
+  free(wl2);
+  return runtime;
+}

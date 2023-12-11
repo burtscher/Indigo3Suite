@@ -1,0 +1,108 @@
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+#include "indigo_cc_edge_omp.h"
+//BlankLine
+
+/*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
+/*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+ReadModifyWrite@*/
+/*@NoLivelockBug@*/ /*@LivelockBug@*/ suppress
+/*@-ReadModifyWrite@*/
+
+/*@NonDeterm@*/static void init(data_type* const label, const int size) /*@Determ@*/static void init(data_type* const label, data_type* const label_n, const int size)
+{
+  // initialize arrays
+  for (int v = 0; v < size; v++) {
+    /*@NonDeterm@*/ /*@Determ@*/ label_n[v] = v;
+    label[v] = v;
+  }
+}
+//BlankLine
+
+/*@NonDeterm@*/ static void cc(const ECLgraph g, const int* const sp, data_type* const label, int* goagain) /*@Determ@*/ static void cc(const ECLgraph g, const int* const sp, data_type* const label, data_type* const label_n, int* goagain)
+{
+  /*@Default@*/ #pragma omp parallel for /*@Dynamic@*/ #pragma omp parallel for schedule(dynamic)
+
+  /*@+NoBoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int e = 0; e < g.edges; e++) { /*@FieldBug@*/ for (int e = 0; e < g.nodes; e++) { 
+  /*@-NoBoundsBug@*/
+
+  /*@+BoundsBug@*/ 
+  /*@NoFieldBug@*/ for (int e = 0; e <= g.edges; e++) { /*@FieldBug@*/ for (int e = 0; e <= g.nodes; e++) { 
+  /*@-BoundsBug@*/
+
+    //BlankLine
+    const int src = sp[e];
+    const int dst = g.nlist[e];
+
+    /*@+NonDeterm@*/ /*@+ReadWrite@*/
+    /*@RaceBug@*/ const data_type new_label = label[src]; /*@Atomic@*/ const data_type new_label = atomicRead(&label[src]);
+    /*@NoMixSyncBug@*/ /*@MixSyncBug@*/ suppress
+    /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+    /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ data_type new_label; /*@MixSyncBug@*/ const data_type new_label = atomicRead(&label[src]);
+    /*@NoMixSyncBug@*/ #pragma omp critical /*@MixSyncBug@*/
+    /*@NoMixSyncBug@*/ new_label = label[src]; /*@MixSyncBug@*/
+    /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+    /*@+Determ@*/ /*@+ReadModifyWrite@*/
+    /*@NoMixSyncBug@*/ const data_type new_label = label[src]; /*@MixSyncBug@*/ suppress
+    /*@-Determ@*/ /*@-ReadModifyWrite@*/
+    //BlankLine
+
+      /*@+NonDeterm@*/ /*@+ReadWrite@*/
+      /*@RaceBug@*/ const data_type d = label[dst]; /*@Atomic@*/ const data_type d = atomicRead(&label[dst]);
+    /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
+        /*@RaceBug@*/ label[dst] = new_label; /*@Atomic@*/ atomicWrite(&label[dst], new_label);
+      /*@-NonDeterm@*/ /*@-ReadWrite@*/
+
+      /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&label[dst], new_label) > new_label) {
+      /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
+
+      /*@+Determ@*/ /*@+ReadModifyWrite@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ if (critical_min(&label_n[dst], new_label) > new_label) {
+      /*@-Determ@*/ /*@-ReadModifyWrite@*/
+
+      /*@+NonDeterm@*/
+      /*@RaceBug@*/ atomicWrite(goagain, 1); /*@Atomic@*/ atomicWrite(goagain, 1);
+      /*@-NonDeterm@*/
+      /*@+Determ@*/
+      /*@RaceBug@*/ suppress /*@Atomic@*/ atomicWrite(goagain, 1);
+      /*@-Determ@*/
+      }
+  }
+}
+//BlankLine
+
+static double CPUcc_edge(const ECLgraph g, data_type* label, const int* const sp)
+{
+  /*@NonDeterm@*/ /*@Determ@*/ data_type* label_new = malloc(sizeof(data_type) * g.nodes);
+  struct timeval start, end;
+
+  //BlankLine
+
+  /*@NonDeterm@*/ init(label, g.nodes); /*@Determ@*/ init(label, label_new, g.nodes);
+  //BlankLine
+
+  // iterate until no more changes
+  int* goagain = malloc(sizeof(int));
+  int iter = 0;
+  gettimeofday(&start, NULL);
+  do {
+    iter++;
+    *goagain = 0;
+    /*@NonDeterm@*/ cc(g, sp, label, goagain); /*@Determ@*/ cc(g, sp, label, label_new, goagain);
+    /*@NonDeterm@*/ /*@Determ@*/ SWAP(label, label_new);
+  } while (*goagain);
+  //BlankLine
+
+  gettimeofday(&end, NULL);
+  double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("iterations: %d\n", iter);
+  //BlankLine
+
+  free(goagain);
+  return runtime;
+}
