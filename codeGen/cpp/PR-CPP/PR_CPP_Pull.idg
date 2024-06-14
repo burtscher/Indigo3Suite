@@ -1,10 +1,14 @@
-
 /*@FloatType@*/ typedef float score_type; /*@DoubleType@*/ typedef double score_type;
-/*@AtomicAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ #include <mutex>
+/*@GlobalAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ #include <mutex>
 /*@Block@*/ declare /*@Cyclic@*/ declare
-
 #include "indigo_pr_cpp.h"
-/*@AtomicAdd@*/ typedef std::atomic<double> error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+//BlankLine
+
+/*@+NoRaceBug@*/
+/*@GlobalAdd@*/ typedef std::atomic<double> error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+/*@-NoRaceBug@*/
+/*@NoRaceBug@*/ /*@RaceBug@*/ typedef double error_type;
+//BlankLine
 
 /*@+Critical@*/ 
 //+BlankLine
@@ -49,12 +53,20 @@ static void errorCalc(const ECLgraph g, error_type& error, score_type* outgoing_
     
     local_error += fabs(scores[i] - old_score);
   }
-  /*@AtomicAdd@*/ atomicAdd(&error, local_error); /*@Reduction@*/ error = local_error; /*@Critical@*/ 
-  /*@+Critical@*/ 
+  
+  /*@+NoRaceBug@*/ 
+  /*@GlobalAdd@*/ atomicAddDouble(&error, local_error); /*@Reduction@*/ error = local_error; /*@Critical@*/ 
+  /*@-NoRaceBug@*/ 
+  
+  /*@+Critical@*/
   mutex.lock();
   error += local_error;
   mutex.unlock();
-  /*@-Critical@*/ 
+  /*@-Critical@*/
+  
+  /*@+RaceBug@*/ 
+  /*@GlobalAdd@*/ error += local_error; /*@Reduction@*/ suppress /*@Critical@*/ suppress;
+  /*@-RaceBug@*/ 
 }
 //BlankLine
 
@@ -62,6 +74,7 @@ static double PR_CPU(const ECLgraph g, score_type *scores, int* degree, const in
 {
   const score_type base_score = (1.0f - kDamp) / (score_type)g.nodes;
   score_type* outgoing_contrib = (score_type*)malloc(g.nodes * sizeof(score_type));
+  error_type error;
   std::thread threadHandles[threadCount];
   /*@+Reduction@*/
   double localSums[threadCount];
@@ -74,13 +87,13 @@ static double PR_CPU(const ECLgraph g, score_type *scores, int* degree, const in
   //BlankLine
   
   for (iter = 0; iter < MAX_ITER; iter++) {
-    error_type error = 0;    
+    error = 0;    
     /*@Determin@*/ for (int i = 0; i < g.nodes; i++) outgoing_contrib[i] = scores[i] / degree[i]; /*@NonDetermin@*/
     
     for (int i = 0; i < threadCount; ++i) {
-      /*@+AtomicAdd@*/
+      /*@+GlobalAdd@*/
       threadHandles[i] = std::thread(errorCalc, g, std::ref(error), outgoing_contrib, scores, degree, base_score, i, threadCount);
-      /*@-AtomicAdd@*/
+      /*@-GlobalAdd@*/
       /*@+Critical@*/
       threadHandles[i] = std::thread(errorCalc, g, std::ref(error), outgoing_contrib, scores, degree, base_score, i, threadCount);
       /*@-Critical@*/

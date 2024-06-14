@@ -1,4 +1,5 @@
 /*@FloatType@*/ typedef float score_type; /*@DoubleType@*/ typedef double score_type;
+/*@GlobalAdd@*/ declare /*@Reduction@*/ declare /*@Critical@*/ declare
 /*@Block@*/ declare /*@Cyclic@*/ declare
 #include "indigo_pr_c.h"
 //BlankLine
@@ -7,7 +8,7 @@
 /*@NoRaceBug2@*/ declare /*@RaceBug2@*/ declare
 
 /*@+NoRaceBug1@*/
-/*@AtomicAdd@*/ typedef _Atomic double error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
+/*@GlobalAdd@*/ typedef _Atomic double error_type; /*@Reduction@*/ typedef double error_type; /*@Critical@*/ typedef double error_type;
 /*@-NoRaceBug1@*/
 /*@NoRaceBug1@*/ /*@RaceBug1@*/ typedef double error_type;
 
@@ -89,17 +90,17 @@ static int errorCalc(void* arg)
     local_error += fabs(value - old_score);
   }
   /*@+NoRaceBug1@*/ 
-  /*@AtomicAdd@*/ atomicAddDouble(&error, local_error); /*@Reduction@*/ localSums[threadID] = local_error; /*@Critical@*/ 
+  /*@GlobalAdd@*/ atomicAddDouble(&error, local_error); /*@Reduction@*/ localSums[threadID] = local_error; /*@Critical@*/ 
   /*@-NoRaceBug1@*/ 
   
-  /*@+Critical@*/ /*@+NoRaceBug1@*/
+  /*@+Critical@*/
   mtx_lock(&mutex);
   error += local_error;
   mtx_unlock(&mutex);
-  /*@-Critical@*/ /*@+NoRaceBug1@*/
+  /*@-Critical@*/
   
   /*@+RaceBug1@*/ 
-  /*@AtomicAdd@*/ error += local_error; /*@Reduction@*/ suppress /*@Critical@*/ error += local_error;
+  /*@GlobalAdd@*/ error += local_error; /*@Reduction@*/ suppress /*@Critical@*/ suppress;
   /*@-RaceBug1@*/ 
 }
 //BlankLine

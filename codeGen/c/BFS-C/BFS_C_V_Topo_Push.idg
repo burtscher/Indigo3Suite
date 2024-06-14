@@ -87,7 +87,7 @@ static int bfs(void* arg)
         /*@-ReadWrite@*/
 
         /*@+ReadModifyWrite@*/
-        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
+        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Race@*/ suppress
         /*@-ReadModifyWrite@*/
 
         updated = true;

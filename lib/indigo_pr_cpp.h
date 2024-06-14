@@ -1,3 +1,41 @@
+/*
+This file is part of the Indigo3 benchmark suite version 1.0.
+
+BSD 3-Clause License
+
+Copyright (c) 2024, Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+URL: The latest version of the Indigo3 benchmark suite is available at https://github.com/burtscher/Indigo3Suite/.
+
+Publication: This work is described in detail in the following paper.
+Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Parallel Graph Analytics Benchmark Suite for Exploring Implementation Styles and Common Bugs." ACM Transactions on Parallel Computing. May 2024.
+*/
+
+
 #include <algorithm>
 #include <sys/time.h>
 #include <math.h>
@@ -20,6 +58,13 @@ static double median(double array[], const int n)
   return median;
 }
 
+static inline double atomicAddDouble(std::atomic<double>* addr, double val)
+{
+  double old = addr->load();
+  while (!(addr->compare_exchange_weak(old, old + val))) {}
+  return old;
+}
+
 template <typename T>
 static inline T atomicAdd(std::atomic<T>* addr, T val)
 {
@@ -32,7 +77,7 @@ int main(int argc, char *argv[]) {
   printf("PageRank CPP v0.1 (%s)\n", __FILE__);
   printf("Copyright 2022 Texas State University\n\n");
 
-  if (argc != 2 && argc != 3) {printf("USAGE: %s input_graph thread_count(optional)\n\n", argv[0]);  exit(-1);}
+  if (argc < 3) {printf("USAGE: %s input_graph runs thread_count(optional)\n\n", argv[0]);  exit(-1);}
 
   // read input
   ECLgraph g = readECLgraph(argv[1]);
@@ -47,21 +92,28 @@ int main(int argc, char *argv[]) {
     degree[i] = g.nindex[i + 1] - g.nindex[i];
   }
 
+  const int runs = atoi(argv[2]);
   int threadCount = std::thread::hardware_concurrency(); //defaults to max threads
-  if(argc == 3)
-    if(const int countInt = atoi(argv[2])) //checks for valid int
+  if(argc >= 3)
+    if(const int countInt = atoi(argv[3])) //checks for valid int
       threadCount = countInt;             //takes optional argument for thread count
   printf("Threads: %d\n\n", threadCount);
 
   // init scores
   const score_type init_score = 1.0f / (score_type)g.nodes;
   score_type* scores = new score_type [g.nodes];
-  std::fill(scores, scores + g.nodes, init_score);
-
-  double runtime = PR_CPU(g, scores, degree, threadCount);
+  double runtimes [runs];
   
-  printf("CPU runtime: %.6fs\n\n", runtime);
-  printf("Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / runtime);
+  for (int i = 0; i < runs; i++) {
+    // init scores
+    std::fill(scores, scores + g.nodes, init_score);
+    
+    runtimes[i] = PR_CPU(g, scores, degree, threadCount);
+  }
+  
+  const double med = median(runtimes, runs);
+  printf("runtime: %.6fs\n\n", med);
+  printf("Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
   
   // compare and verify
   const score_type base_score = (1.0f - kDamp) / (score_type)g.nodes;

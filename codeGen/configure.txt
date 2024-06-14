@@ -1,7 +1,7 @@
 /*************************************************************************************************************
 1. All the configure options
 CODE:
-	bug: 		/* all*/
+	bug: 		/* all */
 	pattern: 	/* sssp */
 	option: 	/* (Thread, Warp, Block), (Atomic, NonAtomic, CudaAtomic), (NonPersist, persist), (IntType, LongType), (NonDeterm, Determ), (ReadWrite, ReadModifyWrite) */
 

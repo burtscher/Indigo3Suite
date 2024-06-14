@@ -159,7 +159,6 @@ static double CPUmst(const ECLgraph g, bool* const included)
       mst_second(g, included, minv, parent);
       //BlankLine
       
-      // std::fill(minv, minv + g.nodes, INT_MAX);
       for (int v = 0; v < g.nodes; v++) {
         minv[v] = INT_MAX;
       }

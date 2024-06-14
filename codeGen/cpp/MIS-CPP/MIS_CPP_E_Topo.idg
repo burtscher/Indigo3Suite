@@ -14,13 +14,13 @@ typedef std::atomic<bool> flag_t;
 /*@-Cyclic@*/
 
 /*@+NonDeterm@*/
-static void init(data_type* const priority, shared_t* const status, bool* const lost, const int size)
+static void init(data_type* const priority, shared_t* const status, flag_t* const lost, const int size)
 /*@-NonDeterm@*/
 /*@+CopyDeterm@*/
-static void init(data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int size)
+static void init(data_type* const priority, shared_t* const status, shared_t* const status_n, flag_t* const lost, const int size)
 /*@-CopyDeterm@*/
 /*@+MergeDeterm@*/
-static void init(data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int size) 
+static void init(data_type* const priority, shared_t* const status, shared_t* const status_n, flag_t* const lost, const int size) 
 /*@-MergeDeterm@*/
 {
   // initialize arrays
@@ -35,13 +35,13 @@ static void init(data_type* const priority, shared_t* const status, shared_t* co
 //BlankLine
 
 /*@+NonDeterm@*/
-static void mis(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, bool* const lost, const int threadID, const int threadCount)
+static void mis(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, flag_t* const lost, const int threadID, const int threadCount)
 /*@-NonDeterm@*/
 /*@+CopyDeterm@*/
-static void mis(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int threadID, const int threadCount)
+static void mis(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, flag_t* const lost, const int threadID, const int threadCount)
 /*@-CopyDeterm@*/
 /*@+MergeDeterm@*/
-static void mis(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, bool* const lost, const int threadID, const int threadCount)
+static void mis(const ECLgraph& g, const int* const sp, data_type* const priority, shared_t* const status, shared_t* const status_n, flag_t* const lost, const int threadID, const int threadCount)
 /*@-MergeDeterm@*/
 {
   /*@NoFieldBug@*/ const int N = g.edges; /*@FieldBug@*/ const int N = g.nodes;
@@ -88,13 +88,13 @@ static void mis(const ECLgraph& g, const int* const sp, data_type* const priorit
 //BlankLine
 
 /*@+NonDeterm@*/
-static void mis_vertex_pass(shared_t* const status, bool* const lost, const int size, bool& goagain, const int threadID, const int threadCount)
+static void mis_vertex_pass(shared_t* const status, flag_t* const lost, const int size, flag_t& goagain, const int threadID, const int threadCount)
 /*@-NonDeterm@*/ 
 /*@+MergeDeterm@*/ 
-static void mis_vertex_pass(shared_t* const status, shared_t* const status_n, bool* const lost, const int size, bool& goagain, const int threadID, const int threadCount)
+static void mis_vertex_pass(shared_t* const status, shared_t* const status_n, flag_t* const lost, const int size, flag_t& goagain, const int threadID, const int threadCount)
 /*@-MergeDeterm@*/
 /*@+CopyDeterm@*/ 
-static void mis_vertex_pass(shared_t* const status, shared_t* const status_n, bool* const lost, const int size, bool& goagain, const int threadID, const int threadCount)
+static void mis_vertex_pass(shared_t* const status, shared_t* const status_n, flag_t* const lost, const int size, flag_t& goagain, const int threadID, const int threadCount)
 /*@-CopyDeterm@*/
 {
   /*@+Block@*/
@@ -144,7 +144,7 @@ static double CPPmis_edge(const ECLgraph& g, const int* const sp, data_type* con
 {
   shared_t* status = (shared_t*)status_orig;
   /*@NonDeterm@*/ /*@CopyDeterm@*/ shared_t* status_new = new shared_t [g.nodes]; /*@MergeDeterm@*/ shared_t* status_new = new shared_t [g.nodes]; 
-  bool* lost = new bool [g.nodes];
+  flag_t* lost = new flag_t [g.nodes];
   std::thread threadHandles[threadCount];
   //BlankLine
 
@@ -155,7 +155,7 @@ static double CPPmis_edge(const ECLgraph& g, const int* const sp, data_type* con
   gettimeofday(&beg, NULL);
   //BlankLine
 
-  bool goagain;
+  flag_t goagain;
   int iter = 0;
   do {
     iter++;

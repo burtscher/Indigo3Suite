@@ -7,7 +7,7 @@
 #include "indigo_pr_omp.h"
 
 //BlankLine
-void PR_CPU(const ECLgraph g, data_type *scores, int* degree)
+double PR_CPU(const ECLgraph g, data_type *scores, int* degree)
 {
   const data_type base_score = (1.0f - kDamp) / (data_type)g.nodes;
   data_type* outgoing_contrib = (data_type*)malloc(g.nodes * sizeof(data_type));
@@ -59,7 +59,7 @@ void PR_CPU(const ECLgraph g, data_type *scores, int* degree)
       /*@-NoRaceBug@*/
 
       /*@+RaceBug@*/
-      /*@AtomicRed@*/ /*@CriticalRed@*/ /*@ClauseRed@*/
+      /*@AtomicRed@*/ /*@CriticalRed@*/ suppress /*@ClauseRed@*/ suppress
       /*@-RaceBug@*/
 
       error += fabs(value - old_score);
@@ -71,7 +71,9 @@ void PR_CPU(const ECLgraph g, data_type *scores, int* degree)
   if (iter < MAX_ITER) iter++;
   const float runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
   printf("CPU iterations = %d.\n", iter);
-  printf("CPU runtime: %.6fs\n\n", runtime);
-  printf("Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / runtime);
-
+  //BlankLine
+  
+  free(outgoing_contrib);
+  free(incoming_total);
+  return runtime;
 }

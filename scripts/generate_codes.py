@@ -1,9 +1,63 @@
 #!/usr/bin/python3 -u
 
+'''
+This file is part of the Indigo3 benchmark suite version 1.0.
+
+BSD 3-Clause License
+
+Copyright (c) 2024, Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+URL: The latest version of the Indigo3 benchmark suite is available at https://github.com/burtscher/Indigo3Suite/.
+
+Publication: This work is described in detail in the following paper.
+Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Parallel Graph Analytics Benchmark Suite for Exploring Implementation Styles and Common Bugs." ACM Transactions on Parallel Computing. May 2024.
+'''
+
+
 import itertools
 import sys
 import os
 import re
+
+error_msg = 'USAGE: input_file_name copyright_file output_directory programming_model\n\
+\n\
+input_file_name: .idg file to generate codes from (relative path)\n\
+copyright_file: relative path to copyright.txt\n\
+output_directory: directory to place generated codes in (relative path, does not need to exist)\n\
+programming_model: file extension of generated codes:\n\
+  c for C and OpenMP\n\
+  cu for CUDA\n\
+  cpp for C++\n'
+
+def needBugComment(tag, code):
+	if ("Race" in tag and "No" not in tag and "Atomic" not in code and code) or ("Bug" in tag and "No" not in tag and code): # if Race or Bug
+		return True
+	else:
+		return False
 
 # filter data type
 def filter_datat(idg_file, code_file, dataType):
@@ -120,16 +174,16 @@ def find_line_tags(l):
 
 # read the command line
 args = sys.argv
-if (len(args) <= 3):
-	sys.exit('USAGE: input_file_name output_directory programming_model\n')
+if (len(args) <= 4):
+	sys.exit(error_msg)
 
 # change the save path
 cur_path = os.getcwd()
 out_path = cur_path
 in_file_path = args[1]
-out_directory = args[2]
+out_directory = args[3]
 model = "."
-model += args[3]
+model += args[4]
 save_path = os.path.join(out_path, out_directory)
 file_name = (os.path.split(in_file_path))[1].replace('.idg', '')
 
@@ -231,18 +285,19 @@ if (f_pattern):
 			lspace = 0
 
 			################ write copyright file
-			# copyright_file = open(args[2], 'r')
-			# c_lines = copyright_file.readlines()
-			# output_file.write('/* ')
-			# for l in c_lines: # write copyright
-			# 	output_file.write(l)
-			# output_file.write(' */\n\n')
-			# copyright_file.close()
+			copyright_file = open(args[2], 'r')
+			c_lines = copyright_file.readlines()
+			output_file.write('/*\n')
+			for l in c_lines: # write copyright
+				output_file.write(l)
+			output_file.write('\n*/\n\n\n')
+			copyright_file.close()
 
 			find_nested_tag = False
 			nested = False
 			flag = False
 			act_tags = set() # activated tags
+			prevTags = []
 
 			for l in lines: # write codes
 				l = l.strip()
@@ -260,7 +315,10 @@ if (f_pattern):
 					elif line_tags and find_nested_tag: # the +tag is activated
 						re_split = re.split('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
 						ostr, idx = find_code(line_tags, count, p_all_tags[i], re_split)
-
+						
+						if needBugComment(line_tags[idx], ostr):	# check if this nested line needs its own bug label
+							ostr = "// " + line_tags[idx] + " here\n" + ' ' * lspace + ostr
+						
 						if sup in ostr:
 							flag = True
 							break
@@ -268,6 +326,11 @@ if (f_pattern):
 							act_tags.add(line_tags[idx])
 					elif find_nested_tag:
 						ostr = l.strip()
+					
+					if '+' in ' '.join(prevTags):	# if this is the first line of a bug tag block and isn't blank, add the bug label
+						for ptag in prevTags:
+							if needBugComment(ptag, ostr):	
+								ostr = "// " + ptag.strip().replace('+','') + " here\n" + ' ' * lspace + ostr
 
 				elif line_tags: # if the line has tags and not in the nested tag section
 					re_split = re.split('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
@@ -276,8 +339,11 @@ if (f_pattern):
 					if ((not nested) and ('+' not in line_tags[0]) and ('-' not in line_tags[0])):
 						re_split = re.split('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
 						code, idx = find_code(line_tags, count, p_all_tags[i], re_split)
+						
+						if needBugComment(line_tags[idx], code):
+							code = "// " + line_tags[idx] + " here\n" + ' ' * lspace + code
+						
 						if sup in code:
-								#print("true")
 							flag = True
 							break
 						elif dec not in code:
@@ -297,14 +363,19 @@ if (f_pattern):
 										tmp.append(item)
 										tcount += 1
 
-						if ((tcount == len(line_tags) and not or_tag)) or (or_tag and tcount == 1):
+						if ((tcount == len(line_tags) and not or_tag)) or (or_tag and tcount >= 1):
 							find_nested_tag = True
 							for item in tmp:
 								act_tags.add(item)
 					if code:
 						ostr = code
+					prevTag = line_tags
 				else:
-			 		ostr = l
+					ostr = l
+				if line_tags:
+					prevTags = line_tags
+				else:
+					prevTags = []
 				if ostr.startswith('}'):
 					lspace = lspace - 2
 				if ostr and dec not in ostr:

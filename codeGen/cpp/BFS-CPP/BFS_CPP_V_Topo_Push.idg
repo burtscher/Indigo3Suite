@@ -76,7 +76,7 @@ static void bfs(const ECLgraph g, shared_t* const dist, flag_t& goagain, const i
         /*@-ReadWrite@*/
 
         /*@+ReadModifyWrite@*/
-        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
+        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Race@*/ suppress
         /*@-ReadModifyWrite@*/
 
         updated = true;

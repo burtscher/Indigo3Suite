@@ -34,9 +34,9 @@ __global__ void contrib(int nodes, data_type* scores, int* degree, data_type* ou
   }
 }
 //BlankLine
-/*@Determ@*/  __global__ void pull(int nodes, const int* const __restrict__ nindex, const int* const __restrict__ nlist, data_type* scores, data_type* outgoing_contrib, data_type* diff, data_type base_score) /*@NonDeterm@*/  __global__ void pull(int nodes, const int* const __restrict__ nindex, const int* const __restrict__ nlist, data_type* scores, data_type* outgoing_contrib, data_type* diff, data_type base_score, int* degree)
+/*@Determ@*/  __global__ void pull(const ECLgraph g, data_type* scores, data_type* outgoing_contrib, data_type* diff, data_type base_score) /*@NonDeterm@*/  __global__ void pull(const ECLgraph g, data_type* scores, data_type* outgoing_contrib, data_type* diff, data_type base_score, int* degree)
 {
-
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
   /*@+BlockAdd@*/
   __shared__ data_type local_diff;
   if (threadIdx.x == 0) local_diff = 0;
@@ -53,7 +53,7 @@ __global__ void contrib(int nodes, data_type* scores, int* degree, data_type* ou
   data_type error = 0;
   /*@+NonPersist@*/
   /*@Thread@*/ int src = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int src = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int src = blockIdx.x;
-  /*@NoExcessThreadsBug@*/ if (src < nodes) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@NoExcessThreadsBug@*/ if (src < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
   /*@-NonPersist@*/
 
   /*@+Persist@*/
@@ -61,16 +61,16 @@ __global__ void contrib(int nodes, data_type* scores, int* degree, data_type* ou
   /*@-Persist@*/
 
   /*@+Persist@*/ /*@+NoBoundsBug@*/ 
-  /*@Thread@*/ for (int src = tid; src < nodes; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src < nodes; src += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int src = tid; src < nodes; src += gridDim.x) {
+  /*@Thread@*/ for (int src = tid; src < N; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src < N; src += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int src = tid; src < N; src += gridDim.x) {
   /*@-Persist@*/ /*@-NoBoundsBug@*/ 
 
   /*@+Persist@*/ /*@+BoundsBug@*/ 
-  /*@Thread@*/ for (int src = tid; src <= nodes; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src <= nodes; src += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int src = tid; src <= nodes; src += gridDim.x) {
+  /*@Thread@*/ for (int src = tid; src <= N; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src <= N; src += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int src = tid; src <= N; src += gridDim.x) {
   /*@-Persist@*/ /*@-BoundsBug@*/ 
 
     data_type incoming_total = 0;
-    const int beg = nindex[src];
-    const int end = nindex[src + 1];
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
 
     /*@+NoNbrBoundsBug@*/ 
     /*@Thread@*/ for (int i = beg; i < end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % WarpSize; i < end; i += WarpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i < end; i += ThreadsPerBlock) {
@@ -80,7 +80,7 @@ __global__ void contrib(int nodes, data_type* scores, int* degree, data_type* ou
     /*@Thread@*/ for (int i = beg; i <= end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % WarpSize; i <= end; i += WarpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i <= end; i += ThreadsPerBlock) {
     /*@-NbrBoundsBug@*/ 
 
-      int dst = nlist[i];
+      int dst = g.nlist[i];
       /*@Determ@*/ incoming_total += outgoing_contrib[dst]; /*@NonDeterm@*/ incoming_total +=  scores[dst] / degree[dst];
     }
 
@@ -139,7 +139,7 @@ __global__ void contrib(int nodes, data_type* scores, int* degree, data_type* ou
   }
 }
 //BlankLine
-void PR_GPU(const ECLgraph g, data_type *scores, int* degree)
+double PR_GPU(const ECLgraph g, data_type *scores, int* degree)
 {
   // declare device variables
   ECLgraph d_g = g;
@@ -178,41 +178,27 @@ void PR_GPU(const ECLgraph g, data_type *scores, int* degree)
   const data_type base_score = (1.0f - kDamp) / (data_type)g.nodes;
 
   // timer
-  const int runs = 1;
   struct timeval start, end;
-  double runtimes[runs];
+  int iter = 0;
 
-  for (int i = 0; i < runs; i++) {
-    int iter = 0;
+  gettimeofday(&start, NULL);
+  do {
+    iter++;
+    h_diff = 0;
+    if (cudaSuccess != cudaMemcpy(d_diff, &h_diff, sizeof(data_type), cudaMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of h_diff to device failed\n");
 
-    gettimeofday(&start, NULL);
-    do {
-      iter++;
-      h_diff = 0;
-      if (cudaSuccess != cudaMemcpy(d_diff, &h_diff, sizeof(data_type), cudaMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of h_diff to device failed\n");
+    /*@Determ@*/ contrib<<<blocks, ThreadsPerBlock>>>(g.nodes, d_scores, d_degree, d_contrib); /*@NonDeterm@*/
 
-      /*@Determ@*/ contrib<<<blocks, ThreadsPerBlock>>>(g.nodes, d_scores, d_degree, d_contrib); /*@NonDeterm@*/
+    /*@Determ@*/ pull<<<blocks, ThreadsPerBlock>>>(d_g, d_scores, d_contrib, d_diff, base_score); /*@NonDeterm@*/ pull<<<blocks, ThreadsPerBlock>>>(d_g, d_scores, d_contrib, d_diff, base_score, d_degree);
 
-      /*@+NoFieldBug@*/
-      /*@Determ@*/ pull<<<blocks, ThreadsPerBlock>>>(g.nodes, d_g.nindex, d_g.nlist, d_scores, d_contrib, d_diff, base_score); /*@NonDeterm@*/ pull<<<blocks, ThreadsPerBlock>>>(g.nodes, d_g.nindex, d_g.nlist, d_scores, d_contrib, d_diff, base_score, d_degree);
-      /*@-NoFieldBug@*/
+    if (cudaSuccess != cudaMemcpy(&h_diff, d_diff, sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of d_diff from device failed\n");
+  } while (h_diff > EPSILON && iter < MAX_ITER);
+  cudaDeviceSynchronize();
+  gettimeofday(&end, NULL);
 
-      /*@+FieldBug@*/
-      /*@Determ@*/ pull<<<blocks, ThreadsPerBlock>>>(g.edges, d_g.nindex, d_g.nlist, d_scores, d_contrib, d_diff, base_score); /*@NonDeterm@*/ pull<<<blocks, ThreadsPerBlock>>>(g.edges, d_g.nindex, d_g.nlist, d_scores, d_contrib, d_diff, base_score, d_degree);
-      /*@-FieldBug@*/
-
-      if (cudaSuccess != cudaMemcpy(&h_diff, d_diff, sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of d_diff from device failed\n");
-    } while (h_diff > EPSILON && iter < MAX_ITER);
-    cudaDeviceSynchronize();
-    gettimeofday(&end, NULL);
-
-    runtimes[i] = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
-    printf("GPU iterations = %d.\n", iter);
-  }
-
-  const double med = median(runtimes, runs);
-  printf("GPU runtime: %.6fs\n\n", med);
-  printf("Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
+  if (iter < MAX_ITER) iter++;
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("GPU iterations = %d.\n", iter);
 
   if (cudaSuccess != cudaMemcpy(scores, d_scores, g.nodes * sizeof(data_type), cudaMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of d_scores from device failed\n");
 
@@ -221,5 +207,5 @@ void PR_GPU(const ECLgraph g, data_type *scores, int* degree)
   cudaFree(d_sums);
   cudaFree(d_contrib);
   cudaFree(d_diff);
-  return;
+  return runtime;
 }
