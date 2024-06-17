@@ -178,7 +178,7 @@ int main(int argc, char* argv [])
 
   // clean up
   delete [] sp;
-  freeECLgraph(g);
+  freeECLgraph(&g);
   return 0;
 }
 

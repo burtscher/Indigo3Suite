@@ -2,7 +2,7 @@
 /*@NonDeterm@*/ declare /*@Determ@*/ declare
 /*@IntType@*/ declare /*@LongType@*/ declare
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic>
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 
 /*@push@*/ /*@pull@*/ suppress
@@ -10,6 +10,7 @@
 
 /*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t;
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+typedef data_type basic_t;
 
 static const int ThreadsPerBlock = 512;
 //BlankLine

@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
   delete [] priority;
   delete [] status;
   delete [] sp;
-  freeECLgraph(g);
+  freeECLgraph(&g);
   return 0;
 }
 

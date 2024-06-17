@@ -96,7 +96,7 @@ static double CPPbfs_vertex(const int src, const ECLgraph& g, data_type* const d
   int* wl1 = new int [size];
   int* wl2 = new int [size];
   idx_t* time = new idx_t [g.nodes];
-  idx_t wl1size = 0;
+  idx_t wl1size;
   idx_t wl2size;
   std::thread threadHandles[threadCount];
   //BlankLine

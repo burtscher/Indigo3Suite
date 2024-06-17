@@ -77,7 +77,7 @@ static void triCounting(shared_t& g_count, const int edges, const int* const nin
 
 static double CPUtc_edge(basic_t &count_orig, const int edges, const int* const nindex, const int* const nlist, const int* const sp, const int threadCount)
 {
-  shared_t count = 0;
+  shared_t count;
   std::thread threadHandles[threadCount];
   /*@+Reduction@*/
   basic_t localSums[threadCount];

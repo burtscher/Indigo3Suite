@@ -78,7 +78,7 @@ static void triCounting(shared_t& g_count, const int nodes, const int* const nin
 
 static double CPUtc_vertex(basic_t &count_orig, const int nodes, const int* const nindex, const int* const nlist, const int threadCount)
 {
-  shared_t count = 0;
+  shared_t count;
   std::thread threadHandles[threadCount];
   /*@+Reduction@*/
   basic_t localSums[threadCount];

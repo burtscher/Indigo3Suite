@@ -177,7 +177,7 @@ int main(int argc, char* argv [])
   printf("CPP Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
 
   // clean up
-  freeECLgraph(g);
+  freeECLgraph(&g);
   return 0;
 }
 

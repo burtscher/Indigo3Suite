@@ -2,6 +2,7 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef long long data_type;
 /*@Atomic@*/ typedef int idx_type; /*@CudaAtomic@*/ typedef cuda::atomic<int> idx_type; /*@RaceBug@*/ typedef int idx_type;
 /*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
+typedef int basic_t;
 
 static const int ThreadsPerBlock = 512;
 /*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/

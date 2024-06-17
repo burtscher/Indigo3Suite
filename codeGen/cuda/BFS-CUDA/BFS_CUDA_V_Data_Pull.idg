@@ -2,7 +2,7 @@
 /*@IntType@*/ declare /*@LongType@*/ declare
 
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 
 /*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare

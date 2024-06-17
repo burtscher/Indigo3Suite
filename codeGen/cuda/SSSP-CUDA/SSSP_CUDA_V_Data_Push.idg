@@ -3,7 +3,7 @@
 /*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
 
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 /*@NonDup@*/ declare /*@Dup@*/ declare
 
@@ -155,7 +155,7 @@ static const int ThreadsPerBlock = 512;
 
       /*@+NonDeterm@*/ /*@+ReadWrite@*/ /*@+NonDup@*/
       /*@Thread@*/ /*@Warp@*/ if (threadIdx.x % WarpSize == 0) { /*@Block@*/ if (threadIdx.x == 0) {
-        /*@Thread@*/ if (updated) { /*@Warp@*/ if (updated[warp]) { /*@Block@*/ if (updated) {
+        /*@Thread@*/ if (updated) { /*@Warp@*/ if (updated[threadIdx.x / WarpSize]) { /*@Block@*/ if (updated) {
           if (atomicMax(&time[src], iter) < iter) {
             wl2[atomicAdd(wl2size, 1)] = src;
           }
@@ -165,7 +165,7 @@ static const int ThreadsPerBlock = 512;
 
       /*@+Determ@*/
       /*@Thread@*/ /*@Warp@*/ if (threadIdx.x % WarpSize == 0) { /*@Block@*/ if (threadIdx.x == 0) {
-      /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@CudaAtomic@*/ label_n[src].fetch_min(new_label); /*@RaceBug@*/ suppress
+      /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@CudaAtomic@*/ dist_n[src].fetch_min(s); /*@RaceBug@*/ suppress
       /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
       /*@-Determ@*/
 

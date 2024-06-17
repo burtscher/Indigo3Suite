@@ -36,16 +36,16 @@ Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Pa
 */
 
 
+#include <algorithm>
 #include <sys/time.h>
-#include <threads.h>
-#include <stdatomic.h>
+#include <thread>
+#include <atomic>
 #include <stdbool.h>
 #include <limits.h>
 #include "ECLgraph.h"
 #include "csort.h"
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#define SWAP(a, b) do { __typeof__(a) temp = a; a = b; b = temp; } while (0)
+
+const data_type maxval = std::numeric_limits<data_type>::max();
 
 static double CPUmst(const ECLgraph& g, const int* const sp, bool* const included, const int threadCount);
 

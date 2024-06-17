@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
   ECLgraph g = readECLgraph(argv[1]);
   if (g.eweight == NULL) {
     printf("Generating weights.\n");
-    g.eweight = (data_type*)malloc(g.edges * sizeof(data_type));
+    g.eweight = (int*)malloc(g.edges * sizeof(int));
     for (int i = 0; i < g.nodes; i++) {
       for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) {
         const int nei = g.nlist[j];

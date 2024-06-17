@@ -94,7 +94,7 @@ int main(int argc, char* argv[])
 
   // free memory
   delete [] label;
-  freeECLgraph(g);
+  freeECLgraph(&g);
   return 0;
 }
 

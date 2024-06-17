@@ -1,5 +1,6 @@
 
 /*@FloatType@*/ typedef float data_type; /*@DoubleType@*/ typedef double data_type;
+typedef data_type basic_t;
 /*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
 /*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
 /*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare

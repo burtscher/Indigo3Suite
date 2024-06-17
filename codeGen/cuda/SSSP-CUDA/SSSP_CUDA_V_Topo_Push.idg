@@ -2,7 +2,7 @@
 /*@IntType@*/ declare /*@LongType@*/ declare
 /*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 
 /*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
@@ -27,6 +27,9 @@ typedef int basic_t;
 /*@Atomic@*/ typedef unsigned long long data_type; /*@CudaAtomic@*/ typedef cuda::atomic<unsigned long long> data_type; /*@RaceBug@*/ typedef unsigned long long data_type;
 typedef unsigned long long basic_t;
 /*@-LongType@*/
+
+static const int ThreadsPerBlock = 512;
+/*@Thread@*/ /*@Warp@*/ static const int WarpSize = 32; /*@Block@*/
 
 #include "indigo_sssp_vertex_cuda.h"
 //BlankLine

@@ -67,7 +67,7 @@ out_label: if write_to_file is 1, names log file: ./out/<out_label>_log.txt\n'
 def compile_cmd(arch_number, model, lib_path, code_file_name):
     compiler = ["gcc", "gcc", "nvcc", "g++"]
     optimize_flag = "-O3"
-    parallel_flag = ["-fopenmp", "-pthread -std=c11", "-DSLOWER_ATOMIC -arch=sm_" + arch_number, "-pthread -std=c++11"]
+    parallel_flag = ["-fopenmp", "-pthread -std=c11", "-arch=sm_" + arch_number, "-pthread -std=c++11"] #-DSLOWER_ATOMIC
     library = "-I" + lib_path
     out_name = "-o" + space + exe_name
     return compiler[model] + space + optimize_flag + space + parallel_flag[model] + space + library + space + out_name + space + code_file_name

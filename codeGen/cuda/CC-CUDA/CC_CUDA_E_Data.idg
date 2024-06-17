@@ -1,7 +1,7 @@
 /*@IntType@*/ declare /*@LongType@*/ declare
 /*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ declare /*@RaceBug@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 
 /*@+Persist@*/
 /*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
