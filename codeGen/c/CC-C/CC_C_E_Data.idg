@@ -42,7 +42,7 @@ static void init(const int size)
       wl1[idx] = i;
       idx++;
     }
-    /*@Init@*/ /*@UninitializedBug@*/ edit_time[e] = 0;
+    /*@Init@*/ /*@UninitializedBug@*/ edit_time[v] = 0;
   }
   /*@+Init@*/
   for (int e = 0; e < g.edges; e++) {

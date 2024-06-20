@@ -121,6 +121,13 @@ static inline T atomicCAS(std::atomic<T>* addr, T compare, T val)
 }
 
 template <typename T>
+static inline T atomicCAS(T* addr, T compare, T val)
+{
+  ((std::atomic<T>*)addr)->compare_exchange_strong(compare, val);
+  return compare;
+}
+
+template <typename T>
 static inline T atomicMax(std::atomic<T>* addr, T val)
 {
   T oldv = addr->load();

@@ -41,33 +41,32 @@ Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Pa
 import os
 import sys
 
+compile_only = False
+
 exe_name = "minibench"
 space = " "
 log_file = "log.txt"
 out_dir = "out/"
 threads = "64"
 omp_threads = "16"
-error_msg = 'USAGE: code_dir input_dir lib_dir model gpu_computability runs src write_to_file out_label\n\
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' code_dir input_dir lib_dir programming_model gpu_computability runs src write_to_file out_label\n\
 \n\
-code_dir: relative path to directory containing generated codes to run\n\
-input_dir: relative path to directory containing input graphs to use\n\
-lib_dir: relative path to directory containing required header files (the lib folder)\n\
-model:\n\
-  0 for OpenMP\n\
-  1 for C threads\n\
-  2 for CUDA\n\
-  3 for CPP threads\n\
-gpu_computability: Compute capability of targeted GPU, decimal point removed\n\
+code_dir: path to directory containing generated codes to run\n\
+input_dir: path to directory containing input graphs to use\n\
+lib_dir: path to directory containing required header files (the lib folder)\n\
+programming_model: C, CPP, OMP, or CUDA (case insensitive)\n\
+gpu_computability: Compute capability of targeted GPU, without decimal point\n\
 runs: the number of runs per input per code\n\
 src: source vertex id for the BFS and SSSP codes\n\
-write_to_file: 1 to write output to a log file\n\
-out_label: if write_to_file is 1, names log file: ./out/<out_label>_log.txt\n'
+write_to_file: 1 to write output to a log file in ./out/\n\
+out_label: labels log file ./out/<out_label>_log.txt\n'
+model_map = {"omp" : 0, "c" : 1, "cuda" : 2, "cpp" : 3}
 
 # compute the compile command
 def compile_cmd(arch_number, model, lib_path, code_file_name):
     compiler = ["gcc", "gcc", "nvcc", "g++"]
     optimize_flag = "-O3"
-    parallel_flag = ["-fopenmp", "-pthread -std=c11", "-arch=sm_" + arch_number, "-pthread -std=c++11"] #-DSLOWER_ATOMIC
+    parallel_flag = ["-fopenmp", "-pthread -std=c11", "-arch=sm_" + arch_number, "-pthread -std=c++11"] #-DSLOWER_ATOMIC disabled
     library = "-I" + lib_path
     out_name = "-o" + space + exe_name
     return compiler[model] + space + optimize_flag + space + parallel_flag[model] + space + library + space + out_name + space + code_file_name
@@ -143,7 +142,12 @@ if __name__ == "__main__":
     code_path = args_val[1]
     input_path = args_val[2]
     lib_path = args_val[3]
-    model = int(args_val[4])
+    model = -1
+    if args_val[4].lower() in model_map:
+        model = model_map[args_val[4].lower()]
+    else:
+        print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA\n", file=sys.stderr)
+        sys.exit(error_msg)
     gpu_computability = args_val[5]
     runs = args_val[6]
     src = args_val[7]
@@ -176,7 +180,8 @@ if __name__ == "__main__":
         if code_file.endswith(model_name[model]):
             code_counter += 1
             compile_code(code_file, code_counter, num_codes, compile_cmd(gpu_computability, model, lib_path, os.path.join(code_path, code_file)))
-            run_code(code_file, input_files, num_inputs, input_path, runs, src, write_to_file, log_file)
+            if not compile_only:
+                run_code(code_file, input_files, num_inputs, input_path, runs, src, write_to_file, log_file)
             delete_exe(exe_name)
         else:
             sys.exit('File %s does not match the programming model %s.' % (code_file, model_name[model]))

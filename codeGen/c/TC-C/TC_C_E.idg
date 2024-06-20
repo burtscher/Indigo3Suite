@@ -38,7 +38,7 @@ static int triCounting(void* arg)
   basic_t count = 0;
   
   /*@+Block@*/
-  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)edges / threadCount; /*@PrecedenceBug@*/ declare const int begEdge = threadID * edges / threadCount;
+  /*@NoPrecedenceBug@*/ const int begEdge = threadID * (long)edges / threadCount; /*@PrecedenceBug@*/ const int begEdge = threadID * edges / threadCount;
   /*@NoPrecedenceBug@*/ const int endEdge = (threadID + 1) * (long)edges / threadCount; /*@PrecedenceBug@*/ const int endEdge = (threadID + 1) * edges / threadCount;
   /*@-Block@*/
   

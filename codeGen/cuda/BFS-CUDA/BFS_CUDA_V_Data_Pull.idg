@@ -60,7 +60,7 @@ static const int ThreadsPerBlock = 512;
   /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
   /*@+NonPersist@*/
   /*@Thread@*/ int idx = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int idx = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int idx = blockIdx.x;
-  /*@NoExcessThreadsBug@*/ if (idx < N) { /*@ExcessThreadsBug@*/ /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress 
+  /*@NoExcessThreadsBug@*/ if (idx < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress 
   /*@-NonPersist@*/
 
   /*@+Persist@*/

@@ -5,7 +5,7 @@ typedef std::atomic<int> idx_t;
 typedef std::atomic<bool> flag_t;
 //BlankLine
 
-/*@Atomic@*/ /*@Race@*/ 
+/*@Atomic@*/ /*@RaceBug@*/ 
 /*@NonDeterm@*/ /*@CopyDeterm@*/ /*@MergeDeterm@*/
 
 /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare

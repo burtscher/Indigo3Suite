@@ -4,7 +4,7 @@
 typedef std::atomic<bool> flag_t;
 //BlankLine
 
-/*@Atomic@*/ /*@Race@*/ 
+/*@Atomic@*/ /*@RaceBug@*/ 
 /*@NonDeterm@*/ /*@CopyDeterm@*/ /*@MergeDeterm@*/
 
 /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare

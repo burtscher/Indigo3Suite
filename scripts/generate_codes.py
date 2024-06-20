@@ -43,15 +43,17 @@ import sys
 import os
 import re
 
-error_msg = 'USAGE: input_file_name copyright_file output_directory programming_model\n\
+copyright_defaultpath = "copyright.txt"
+config_defaultpath = "codeGen/configure.txt"
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' input_file output_directory programming_model config_file(optional) copyright_file(optional)\n\
 \n\
-input_file_name: .idg file to generate codes from (relative path)\n\
-copyright_file: relative path to copyright.txt\n\
-output_directory: directory to place generated codes in (relative path, does not need to exist)\n\
-programming_model: file extension of generated codes:\n\
-  c for C and OpenMP\n\
-  cu for CUDA\n\
-  cpp for C++\n'
+input_file: path to .idg file to generate codes from\n\
+output_directory: directory to place generated codes in (does not need to exist)\n\
+programming_model: C, CPP, OMP, or CUDA (case insensitive)\n\
+\n\
+config_file: location of configure.txt, only necessary if working directory is not repository root\n\
+copyright_file: location of copyright.txt, only necessary if working directory is not repository root\n'
+model_map = {"omp" : ".c", "c" : ".c", "cuda" : ".cu", "cpp" : ".cpp"}
 
 def needBugComment(tag, code):
 	if ("Race" in tag and "No" not in tag and "Atomic" not in code and code) or ("Bug" in tag and "No" not in tag and code): # if Race or Bug
@@ -122,8 +124,15 @@ def filter_opt(idg_file, code_file, options):
 	return False
 
 # read configure file
-def read_configure(cfile):
-	input_file = open(cfile, 'r')
+def read_configure(args):
+	input_file = ''
+	if os.path.isfile(config_defaultpath):
+		input_file = open(config_defaultpath, 'r')
+	elif len(args) >= 5 and os.path.isfile(args[4]):
+		input_file = open(args[4], 'r')
+	else:
+		print("ERROR: configure.txt not found, specify location in arguments:", file=sys.stderr)
+		sys.exit(error_msg)
 	lines = input_file.readlines()
 	codek = ['bug:', 'pattern:', 'option:', 'dataType:']
 	num_codek = 4
@@ -174,21 +183,28 @@ def find_line_tags(l):
 
 # read the command line
 args = sys.argv
-if (len(args) <= 4):
+if (len(args) <= 3):
 	sys.exit(error_msg)
 
 # change the save path
 cur_path = os.getcwd()
 out_path = cur_path
 in_file_path = args[1]
-out_directory = args[3]
-model = "."
-model += args[4]
+out_directory = args[2]
+model = -1
+if args[3].lower() in model_map:
+	model = model_map[args[3].lower()]
+else:
+	print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA\n", file=sys.stderr)
+	sys.exit(error_msg)
 save_path = os.path.join(out_path, out_directory)
 file_name = (os.path.split(in_file_path))[1].replace('.idg', '')
 
+if not os.path.isfile(in_file_path):
+	sys.exit("ERROR: Invalid input_file argument")
+
 # read code configuration
-code_c = read_configure('codeGen/configure.txt')
+code_c = read_configure(args)
 
 # filter pattern
 f_pattern = False
@@ -285,7 +301,13 @@ if (f_pattern):
 			lspace = 0
 
 			################ write copyright file
-			copyright_file = open(args[2], 'r')
+			if os.path.isfile(copyright_defaultpath):
+				copyright_file = open(copyright_defaultpath, 'r')
+			elif len(args) >= 6 and os.path.isfile(args[5]):
+				copyright_file = open(args[5], 'r')
+			else:
+				print("ERROR: copyright.txt not found, specify location in arguments:", file=sys.stderr)
+				sys.exit(error_msg)
 			c_lines = copyright_file.readlines()
 			output_file.write('/*\n')
 			for l in c_lines: # write copyright

@@ -2,13 +2,13 @@
 /*@NonDeterm@*/ declare /*@Determ@*/ declare
 /*@IntType@*/ declare /*@LongType@*/ declare
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic>
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 
 /*@push@*/ /*@pull@*/ suppress
 /*@Thread@*/ /*@Warp@*/ suppress /*@Block@*/ suppress
 
-/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t;
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 typedef data_type basic_t;
 
@@ -58,32 +58,32 @@ static __global__ void mis(const ECLgraph g, const int* const sp, const data_typ
     //BlankLine
     const int src = sp[e];
     const int dst = g.nlist[e];
-    /*@Atomic@*/ const int srcStatus = atomicRead(&status[src]); /*@CudaAtomic@*/ const int srcStatus = status[src].load();
-    /*@Atomic@*/ const int dstStatus = atomicRead(&status[dst]); /*@CudaAtomic@*/ const int dstStatus = status[dst].load();
+    /*@Atomic@*/ const int srcStatus = atomicRead(&status[src]); /*@CudaAtomic@*/ const int srcStatus = status[src].load(); /*@RaceBug@*/ const int srcStatus = status[src];
+    /*@Atomic@*/ const int dstStatus = atomicRead(&status[dst]); /*@CudaAtomic@*/ const int dstStatus = status[dst].load(); /*@RaceBug@*/ const int dstStatus = status[dst];
     //BlankLine
     
     // if one is included, exclude the other
     if (srcStatus == included) {
       /*@+NonDeterm@*/
-      /*@Atomic@*/ atomicWrite(&status[dst], excluded); /*@CudaAtomic@*/ status[dst].store(excluded);
+      /*@Atomic@*/ atomicWrite(&status[dst], excluded); /*@CudaAtomic@*/ status[dst].store(excluded); /*@RaceBug@*/ status[dst] = excluded;
       /*@-NonDeterm@*/
       /*@+Determ@*/
-      /*@Atomic@*/ atomicWrite(&status_n[dst], excluded); /*@CudaAtomic@*/ status_n[dst].store(excluded);
+      /*@Atomic@*/ atomicWrite(&status_n[dst], excluded); /*@CudaAtomic@*/ status_n[dst].store(excluded); /*@RaceBug@*/ suppress
       /*@-Determ@*/
     }
     else if (dstStatus == included) {
       /*@+NonDeterm@*/
-      /*@Atomic@*/ atomicWrite(&status[src], excluded); /*@CudaAtomic@*/ status[src].store(excluded);
+      /*@Atomic@*/ atomicWrite(&status[src], excluded); /*@CudaAtomic@*/ status[src].store(excluded); /*@RaceBug@*/ status[src] = excluded;
       /*@-NonDeterm@*/
       /*@+Determ@*/
-      /*@Atomic@*/ atomicWrite(&status_n[src], excluded); /*@CudaAtomic@*/ status_n[src].store(excluded);
+      /*@Atomic@*/ atomicWrite(&status_n[src], excluded); /*@CudaAtomic@*/ status_n[src].store(excluded); /*@RaceBug@*/ suppress
       /*@-Determ@*/
     } else if (srcStatus == undecided && dstStatus == undecided) {
     // if both undecided -> mark lower as lost
       if (priority[src] < priority[dst]) {
-          /*@Atomic@*/ atomicWrite(&lost[src], 1); /*@CudaAtomic@*/ lost[src].store(1);
+          /*@Atomic@*/ atomicWrite(&lost[src], 1); /*@CudaAtomic@*/ lost[src].store(1); /*@RaceBug@*/ lost[src] = 1;
       } else {
-          /*@Atomic@*/ atomicWrite(&lost[dst], 1); /*@CudaAtomic@*/ lost[dst].store(1);
+          /*@Atomic@*/ atomicWrite(&lost[dst], 1); /*@CudaAtomic@*/ lost[dst].store(1); /*@RaceBug@*/ lost[dst] = 1;
       }
     }
   }
@@ -111,8 +111,8 @@ static __global__ void mis_vertex_pass(const ECLgraph g, const int* const sp, fl
     //BlankLine
     const int src = sp[e];
     const int dst = g.nlist[e];
-    /*@Atomic@*/ const int srcStatus = atomicRead(&status[src]); /*@CudaAtomic@*/ const int srcStatus = status[src].load();
-    /*@Atomic@*/ const int dstStatus = atomicRead(&status[dst]); /*@CudaAtomic@*/ const int dstStatus = status[dst].load();
+    /*@Atomic@*/ const int srcStatus = atomicRead(&status[src]); /*@CudaAtomic@*/ const int srcStatus = status[src].load(); /*@RaceBug@*/ const int srcStatus = status[src];
+    /*@Atomic@*/ const int dstStatus = atomicRead(&status[dst]); /*@CudaAtomic@*/ const int dstStatus = status[dst].load(); /*@RaceBug@*/ const int dstStatus = status[dst];
     //BlankLine
   
     // if v didn't lose
@@ -121,10 +121,10 @@ static __global__ void mis_vertex_pass(const ECLgraph g, const int* const sp, fl
       if (srcStatus == undecided) {
       // and is undecided -> include
         /*@+NonDeterm@*/
-        /*@Atomic@*/ atomicWrite(&status[src], included); /*@CudaAtomic@*/ status[src].store(included);
+        /*@Atomic@*/ atomicWrite(&status[src], included); /*@CudaAtomic@*/ status[src].store(included); /*@RaceBug@*/ status[src] = included;
         /*@-NonDeterm@*/
         /*@+Determ@*/
-        /*@Atomic@*/ atomicWrite(&status_n[src], included); /*@CudaAtomic@*/ status_n[src].store(included);
+        /*@Atomic@*/ atomicWrite(&status_n[src], included); /*@CudaAtomic@*/ status_n[src].store(included); /*@RaceBug@*/ suppress
         /*@-Determ@*/
       }
     }
@@ -133,16 +133,16 @@ static __global__ void mis_vertex_pass(const ECLgraph g, const int* const sp, fl
       if (dstStatus == undecided) {
       // and is undecided -> include
         /*@+NonDeterm@*/
-        /*@Atomic@*/ atomicWrite(&status[dst], included); /*@CudaAtomic@*/ status[dst].store(included);
+        /*@Atomic@*/ atomicWrite(&status[dst], included); /*@CudaAtomic@*/ status[dst].store(included); /*@RaceBug@*/ status[dst] = included;
         /*@-NonDeterm@*/
         /*@+Determ@*/
-        /*@Atomic@*/ atomicWrite(&status_n[dst], included); /*@CudaAtomic@*/ status_n[dst].store(included);
+        /*@Atomic@*/ atomicWrite(&status_n[dst], included); /*@CudaAtomic@*/ status_n[dst].store(included); /*@RaceBug@*/ suppress
         /*@-Determ@*/
       }
     }
     // if either is still undecided, goagain
     if (srcStatus == undecided || dstStatus == undecided) {
-      /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1;
+      /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1; /*@RaceBug@*/ *goagain = 1;
     }
   }
 }

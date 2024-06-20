@@ -114,7 +114,7 @@ static int mst_first(void* arg)
             edx = upd;
             const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
             if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
-          } while ((upd = atomicCAS(&minv[arep], edx, e)) != edx);
+          /*@Atomic@*/ } while ((upd = atomicCAS(&minv[arep], edx, e)) != edx); /*@RaceBug@*/ } while ((upd = atomicCAS_cast(&minv[arep], edx, e)) != edx);
           //BlankLine
           
           upd = minv[brep];
@@ -122,7 +122,7 @@ static int mst_first(void* arg)
             edx = upd;
             const data_type wei = (edx == INT_MAX) ? maxval : eweight[edx];
             if ((eweight[e] > wei) || ((eweight[e] == wei) && (e >= edx))) break;
-          } while ((upd = atomicCAS(&minv[brep], edx, e)) != edx);
+          /*@Atomic@*/ } while ((upd = atomicCAS(&minv[brep], edx, e)) != edx); /*@RaceBug@*/ } while ((upd = atomicCAS_cast(&minv[brep], edx, e)) != edx);
         }
       }
     }

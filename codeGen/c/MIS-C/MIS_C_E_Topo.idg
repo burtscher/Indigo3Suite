@@ -4,7 +4,7 @@
 typedef _Atomic bool flag_t;
 //BlankLine
 
-/*@Atomic@*/ /*@Race@*/ 
+/*@Atomic@*/ /*@RaceBug@*/ 
 /*@NonDeterm@*/ /*@Determ@*/
 
 /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
