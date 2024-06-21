@@ -62,7 +62,7 @@ static __global__ void bfs(const int iter, const ECLgraph g, data_type* const di
   /*@-Persist@*/ /*@-NoBoundsBug@*/
 
   /*@+Persist@*/ /*@+BoundsBug@*/ 
-  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
   /*@-Persist@*/ /*@-BoundsBug@*/ 
 
     //BlankLine

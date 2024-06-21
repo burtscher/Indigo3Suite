@@ -65,7 +65,7 @@ static const int ThreadsPerBlock = 512;
   /*@-Persist@*/ /*@-NoBoundsBug@*/
 
   /*@+Persist@*/ /*@+BoundsBug@*/ 
-  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
   /*@-Persist@*/ /*@-BoundsBug@*/ 
 
     //BlankLine

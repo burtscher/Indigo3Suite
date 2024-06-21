@@ -5,6 +5,13 @@
 /*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 
+/*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+/*@NoUninitializedBug@*/ declare /*@UninitializedBug@*/ declare
+
 /*@push@*/ /*@pull@*/ suppress
 /*@Thread@*/ /*@Warp@*/ suppress /*@Block@*/ suppress
 
@@ -30,7 +37,7 @@ static __global__ void init(const ECLgraph g, const int* const sp, data_type* co
   if (v < g.nodes)
   {
     /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long long)hash(v + 712313887)) | ((unsigned long long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
-    status[v] = undecided;
+    /*@NoUninitializedBug@*/ status[v] = undecided; /*@UninitializedBug@*/
     /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
     lost[v] = 0;
   }
@@ -52,16 +59,23 @@ static __global__ void mis(const ECLgraph g, const int* const sp, const data_typ
 static __global__ void mis(const ECLgraph g, const int* const sp, const data_type* const priority, flag_t* const status, flag_t* const status_n, flag_t* const lost, const int* const wl1, const int wl1size)
 /*@-Determ@*/
 {
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+  
   // go over all edges in wl1
   /*@+NonPersist@*/
   int w = threadIdx.x + blockIdx.x * ThreadsPerBlock;
-  if (w < wl1size) {
+  /*@NoExcessThreadsBug@*/ if (w < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
   /*@-NonPersist@*/
   
-  /*@+Persist@*/
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
   int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock;
-  for (int w = tid; w < wl1size; w += gridDim.x * ThreadsPerBlock) {
-  /*@-Persist@*/
+  for (int w = tid; w < N; w += gridDim.x * ThreadsPerBlock) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/ 
+  
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  for (int w = tid; w <= N; w += gridDim.x * ThreadsPerBlock) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
 
     //BlankLine
     int e = wl1[w];
@@ -106,16 +120,23 @@ static __global__ void mis_vertex_pass(const ECLgraph g, const int* const sp, da
 static __global__ void mis_vertex_pass(const ECLgraph g, const int* const sp, data_type* const priority, flag_t* const status, flag_t* const status_n, flag_t* const lost, const int* const wl1, const int wl1size, int* const wl2, int* const wl2size, const int iter, int* const time)
 /*@-Determ@*/
 {
+  /*@NoFieldBug@*/ const int N = wl1size; /*@FieldBug@*/ const int N = g.nodes;
+  
   // go over all edges in wl1 and check if lost
   /*@+NonPersist@*/
   int w = threadIdx.x + blockIdx.x * ThreadsPerBlock;
-  if (w < wl1size) {
+  /*@NoExcessThreadsBug@*/ if (w < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
   /*@-NonPersist@*/
 
-  /*@+Persist@*/
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
   int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock;
-  for (int w = tid; w < wl1size; w += gridDim.x * ThreadsPerBlock) {
-  /*@-Persist@*/
+  for (int w = tid; w < N; w += gridDim.x * ThreadsPerBlock) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/ 
+  
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  for (int w = tid; w <= N; w += gridDim.x * ThreadsPerBlock) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
   
     //BlankLine
     const int e = wl1[w];

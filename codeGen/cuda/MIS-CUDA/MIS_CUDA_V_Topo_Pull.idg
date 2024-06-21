@@ -1,10 +1,18 @@
 /*@NonDeterm@*/ declare /*@Determ@*/ declare
 /*@IntType@*/ declare /*@LongType@*/ declare
 /*@NonPersist@*/ declare /*@Persist@*/ declare
-/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic>
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
 /*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
 
-/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t;
+/*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
+/*@NoExcessThreadsBug@*/ declare /*@ExcessThreadsBug@*/ declare /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+/*@NoUninitializedBug@*/ declare /*@UninitializedBug@*/ declare
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 typedef data_type basic_t;
 
@@ -27,7 +35,7 @@ static __global__ void init(data_type* const priority, flag_t* const status, fla
   if (v < size) 
   {
     /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
-    status[v] = undecided;
+    /*@NoUninitializedBug@*/ status[v] = undecided; /*@UninitializedBug@*/
     /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
   }
 }
@@ -41,27 +49,33 @@ static __global__ void mis(const ECLgraph g, const data_type* const priority, fl
 /*@-Determ@*/
 {
   /*@Thread@*/ /*@Warp@*/ const int lane = threadIdx.x % WarpSize; /*@Block@*/ 
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
   
   // go over all the nodes
   /*@+NonPersist@*/
   /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int v = blockIdx.x;
-  if (v < g.nodes) {
+  /*@NoExcessThreadsBug@*/ if (v < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress 
   /*@-NonPersist@*/
 
-  /*@+Persist@*/
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
   /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
-  /*@Thread@*/ for (int v = tid; v < g.nodes; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < g.nodes; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < g.nodes; v += gridDim.x) {
-  /*@-Persist@*/
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/ 
+  
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / WarpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / WarpSize)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
   
     //BlankLine
     /*@+Thread@*/
-    /*@Atomic@*/ if (atomicRead(&status[v]) == undecided) { /*@CudaAtomic@*/ if (status[v].load() == undecided) {
+    /*@Atomic@*/ if (atomicRead(&status[v]) == undecided) { /*@CudaAtomic@*/ if (status[v].load() == undecided) { /*@RaceBug@*/ if (status[v] == undecided) {
     /*@-Thread@*/
     /*@+Warp@*/
-    /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[v].load() == undecided))) {
+    /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[v].load() == undecided))) { /*@RaceBug@*/ if (__any_sync(~0, (lane == 0) && (status[v] == undecided))) {
     /*@-Warp@*/
     /*@+Block@*/
-    /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v].load() == undecided))) {
+    /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v].load() == undecided))) { /*@RaceBug@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v] == undecided))) {
     /*@-Block@*/
       int i = g.nindex[v];
       // try to find a non-excluded neighbor whose priority is higher
@@ -72,42 +86,45 @@ static __global__ void mis(const ECLgraph g, const data_type* const priority, fl
         /*@+CudaAtomic@*/ 
         while ((i < g.nindex[v + 1]) && ((status[g.nlist[i]].load() == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
         /*@-CudaAtomic@*/
+        /*@+RaceBug@*/
+        while ((i < g.nindex[v + 1]) && ((status[g.nlist[i]] == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-RaceBug@*/
           i++;
         }
       /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
       /*@Thread@*/ if (i < g.nindex[v + 1]) { /*@Warp@*/ if (__any_sync(~0, (lane == 0) && (i < g.nindex[v + 1]))) { /*@Block@*/ if (__syncthreads_or((threadIdx.x == 0) && (i < g.nindex[v + 1]))) {
         // found such a neighbor -> check if neighbor is included
         /*@+Thread@*/
-        /*@Atomic@*/ if (atomicRead(&status[g.nlist[i]]) == included) { /*@CudaAtomic@*/ if (status[g.nlist[i]].load() == included) {
+        /*@Atomic@*/ if (atomicRead(&status[g.nlist[i]]) == included) { /*@CudaAtomic@*/ if (status[g.nlist[i]].load() == included) { /*@RaceBug@*/ if (status[g.nlist[i]] == included) {
         /*@-Thread@*/
         /*@+Warp@*/
-        /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[g.nlist[i]]) == included))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[g.nlist[i]].load() == included))) {
+        /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[g.nlist[i]]) == included))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[g.nlist[i]].load() == included))) { /*@RaceBug@*/ if (__any_sync(~0, (lane == 0) && (status[g.nlist[i]] == included))) {
         /*@-Warp@*/
         /*@+Block@*/
-        /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[g.nlist[i]]) == included))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[g.nlist[i]].load() == included))) {
+        /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[g.nlist[i]]) == included))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[g.nlist[i]].load() == included))) { /*@RaceBug@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[g.nlist[i]] == included))) {
         /*@-Block@*/
           // found included neighbor -> exclude self
           /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
             /*@+NonDeterm@*/
-            /*@Atomic@*/ atomicWrite(&status[v], excluded); /*@CudaAtomic@*/ status[v].store(excluded);
+            /*@Atomic@*/ atomicWrite(&status[v], excluded); /*@CudaAtomic@*/ status[v].store(excluded); /*@RaceBug@*/ status[v] = excluded;
             /*@-NonDeterm@*/
             /*@+Determ@*/
-            /*@Atomic@*/ atomicWrite(&status_n[v], excluded); /*@CudaAtomic@*/ status_n[v].store(excluded);
+            /*@Atomic@*/ atomicWrite(&status_n[v], excluded); /*@CudaAtomic@*/ status_n[v].store(excluded); /*@RaceBug@*/ suppress
             /*@-Determ@*/
           /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
         } else {
           /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
-            /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1;
+            /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1; /*@RaceBug@*/ *goagain = 1;
           /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
         }
       } else {
         // no such neighbor -> self is "included"
         /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
           /*@+NonDeterm@*/
-          /*@Atomic@*/ atomicWrite(&status[v], included); /*@CudaAtomic@*/ status[v].store(included);
+          /*@Atomic@*/ atomicWrite(&status[v], included); /*@CudaAtomic@*/ status[v].store(included); /*@RaceBug@*/ status[v] = included;
           /*@-NonDeterm@*/
           /*@+Determ@*/
-          /*@Atomic@*/ atomicWrite(&status_n[v], included); /*@CudaAtomic@*/ status_n[v].store(included);
+          /*@Atomic@*/ atomicWrite(&status_n[v], included); /*@CudaAtomic@*/ status_n[v].store(included); /*@RaceBug@*/ suppress
           /*@-Determ@*/
         /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
       }

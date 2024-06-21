@@ -43,9 +43,10 @@ import sys
 import os
 import re
 
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' programming_model\n\
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' programming_model algorithm(optional)\n\
 \n\
-programming_model: ALL, C, CPP, OMP, or CUDA (case insensitive)\n'
+programming_model: ALL, C, CPP, OMP, or CUDA (case insensitive)\n\
+algorithm: only generate one algorithm: BFS, CC, MIS, MST, PR, SSSP, or TC (case insensitive)\n'
 
 base_path = "./codeGen/"
 base_outdir = "./generatedCodes/"
@@ -63,11 +64,17 @@ if model_arg == "ALL":
 elif args[1].upper() not in all_models:
     print("ERROR: Invalid programming_model argument")
     sys.exit(error_msg)
+codes = all_codes
+if len(args) > 2:
+    if args[2].upper() not in all_codes:
+        print("ERROR: Invalid algorithm argument")
+        sys.exit(error_msg)
+    codes = [args[2].upper()]
     
 print(f"Generating {model_arg} codes")
 
 for model in models:
-    for code in all_codes:
+    for code in codes:
         folder_name = code + '-' + model
         indir = os.path.join(os.path.join(base_path, model.lower()), folder_name)
         if not os.path.isdir(indir):
