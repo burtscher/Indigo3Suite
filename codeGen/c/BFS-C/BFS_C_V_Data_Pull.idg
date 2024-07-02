@@ -1,6 +1,6 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include <stdatomic.h>
-/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@Race@*/ typedef data_type shared_t;
+/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@RaceBug@*/ typedef data_type shared_t;
 typedef _Atomic int idx_t;
 #include "indigo_bfs_vertex_c.h"
 //BlankLine
@@ -88,7 +88,7 @@ static int bfs_vertex_data(void* arg)
 
     if (updated) {
       /*@+NonDeterm@*/
-      /*@Atomic@*/ dist[v] = d; /*@Race@*/ suppress;
+      /*@Atomic@*/ dist[v] = d; /*@RaceBug@*/ suppress;
       /*@-NonDeterm@*/
 
       /*@+Determ@*/

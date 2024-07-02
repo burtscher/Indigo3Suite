@@ -1,6 +1,6 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include "indigo_bfs_vertex_cpp.h"
-/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@Race@*/ typedef data_type shared_t; 
+/*@Atomic@*/ typedef std::atomic<data_type> shared_t; /*@RaceBug@*/ typedef data_type shared_t; 
 typedef std::atomic<bool> flag_t;
 //BlankLine
 
@@ -76,7 +76,7 @@ static void bfs(const ECLgraph g, shared_t* const dist, flag_t& goagain, const i
         /*@-ReadWrite@*/
 
         /*@+ReadModifyWrite@*/
-        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Race@*/ suppress
+        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
         /*@-ReadModifyWrite@*/
 
         updated = true;

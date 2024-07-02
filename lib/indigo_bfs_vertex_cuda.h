@@ -74,7 +74,7 @@ static void CheckCuda()
 int main(int argc, char* argv[])
 {
   printf("bfs vertex-based CUDA (%s)\n", __FILE__);
-  if (argc != 4) {fprintf(stderr, "USAGE: %s input_file_name runs source\n", argv[0]); exit(-1);}
+  if (argc < 4) {fprintf(stderr, "USAGE: %s input_file_name runs source\n", argv[0]); exit(-1);}
 
   // process command line
   ECLgraph g = readECLgraph(argv[1]);

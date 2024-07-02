@@ -40,150 +40,103 @@ Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Pa
 
 import os
 import sys
+import subprocess
 
-compile_only = False
-
-exe_name = "minibench"
 space = " "
-log_file = "log.txt"
-out_dir = "out/"
-threads = "64"
-omp_threads = "16"
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' code_dir input_dir lib_dir programming_model gpu_computability runs src write_to_file out_label\n\
+log_dir = "run_logs/"
+error_msg = 'USAGE: python3 ./' + os.path.basename(__file__) + ' exe_dir input_dir runs num_threads src write_to_file out_label\n\
 \n\
-code_dir: path to directory containing generated codes to run\n\
-input_dir: path to directory containing input graphs to use\n\
-lib_dir: path to directory containing required header files (the lib folder)\n\
-programming_model: C, CPP, OMP, or CUDA (case insensitive)\n\
-gpu_computability: Compute capability of targeted GPU, without decimal point\n\
-runs: the number of runs per input per code\n\
+exe_dir: directory containing executables to run\n\
+input_dir: directory containing input graphs to use\n\
+runs: the number of runs per input per program (reports median runtime)\n\
+num_threads: the number of threads to use for C, CPP, OpenMP\n\
 src: source vertex id for the BFS and SSSP codes\n\
-write_to_file: 1 to write output to a log file in ./out/\n\
-out_label: labels log file ./out/<out_label>_log.txt\n'
-model_map = {"omp" : 0, "c" : 1, "cuda" : 2, "cpp" : 3}
+write_to_file: 1 to write output to a log file in ./run_logs/\n\
+out_label: labels log file ./run_logs/<out_label>_log.txt\n'
 
-# compute the compile command
-def compile_cmd(arch_number, model, lib_path, code_file_name):
-    compiler = ["gcc", "gcc", "nvcc", "g++"]
-    optimize_flag = "-O3"
-    parallel_flag = ["-fopenmp", "-pthread -std=c11", "-arch=sm_" + arch_number, "-pthread -std=c++11"] #-DSLOWER_ATOMIC disabled
-    library = "-I" + lib_path
-    out_name = "-o" + space + exe_name
-    return compiler[model] + space + optimize_flag + space + parallel_flag[model] + space + library + space + out_name + space + code_file_name
+# create the run command
+def create_run_cmd(exe_dir, exe_file, input, threads, runs, src):
+    return os.path.join(exe_dir, exe_file) + space + input + space + runs + space + src + space + threads
 
-# compute the run command
-def run_cmd(input, runs, src):
-    return "./" + exe_name + space + input + space + runs + space + src + space + threads
-
-def set_env(model):
-    if (model == 0):
-        os.system("export OMP_NUM_THREADS=" + omp_threads)
-
-def compile_code(code_file, code_counter, num_codes, command):
-    sys.stdout.flush()
-    print("compile %s, %s out of %s programs\n" % (code_file, code_counter, num_codes))
-    sys.stdout.flush()
-    os.system(command)
-
-def run_code(code_file, input_files, num_inputs, input_path, runs, src, write_to_file, log_file):
-    if ("bfs" not in code_file.lower()) and ("sssp" not in code_file.lower()):
+def run_code(exe_dir, exe_file, input_files, num_inputs, input_dir, threads, runs, src, write_to_file, log_fin):
+    if ("bfs" not in exe_file.lower()) and ("sssp" not in exe_file.lower()):
         src = ''
     input_counter = 0
     for input_file in input_files:
         input_counter += 1
-        print("running %s on %s, %s out of %s inputs\n" % (code_file, input_file, input_counter, num_inputs))
+        print("running %s on %s, %s out of %s inputs\n" % (exe_file, input_file, input_counter, num_inputs))
         if write_to_file == 1:
-            os.system("echo " + ('"running %s on %s, %s out of %s inputs\n"' % (code_file, input_file, input_counter, num_inputs)) + " >> " + log_file)
-        set_env(model)
-        run = run_cmd(os.path.join(input_path, input_file), runs, src)
-        #print(run)
+            os.system("echo " + ('"running %s on %s, %s out of %s inputs\n"' % (exe_file, input_file, input_counter, num_inputs)) + " >> " + log_file)
+        run_cmd = create_run_cmd(exe_dir, exe_file, os.path.join(input_dir, input_file), threads, runs, src).split()
+        #print(run_cmd)
         if write_to_file == 1:
             sys.stdout.flush()
-            os.system(run + " >> " + log_file + " 2>&1")
-            os.system("echo >> " + log_file)
-            sys.stdout.flush()
+            try:
+                subprocess.run(run_cmd, env={"OMP_NUM_THREADS": threads}, stdout=log_fin, stderr=subprocess.STDOUT)
+            except:
+                log_fin.close()
+                exit()
+            log_fin.write('\n')
+            log_fin.flush()
         else:
             sys.stdout.flush()
-            os.system(run)
+            try:
+                subprocess.run(run_cmd, env={"OMP_NUM_THREADS": threads})
+            except:
+                exit()
             sys.stdout.write('\n')
             sys.stdout.flush()
-
-def create_out_dir(out_dir):
-    if not os.path.exists(out_dir):
-        print("create directory %s\n" % out_dir)
-        os.mkdir(out_dir)
-    else:
-        print("directory %s already exists\n" % out_dir)
-
-def delete_exe(exe_name):
-    if os.path.isfile(exe_name):
-        os.system("rm " + exe_name)
-    else:
-        sys.exit('Error: compile failed')
 
 if __name__ == "__main__":
     # read command line
     args_val = sys.argv
-    if (len(args_val) != 10):
+    if (len(args_val) != 8):
         sys.exit(error_msg)
-    # @code_dir: the directory of the code
+    # @exe_dir: the directory of the executables
     # @input_dir: the directory of the input
-    # @lib_path: the directory of the library
-    # @model: 
-    #   0 for omp, 
-    #   1 for C threads, 
-    #   2 for cuda,
-    #   3 for CPP threads
-    # @gpu_computability: GPU computability
     # @runs: the number of runs
+    # @num_threads: number of threads
     # @src: source vertex id for bfs and sssp
+    # @write_to_file: 0 or 1
+    # @out_label: log file label
 
     # read inputs
-    code_path = args_val[1]
-    input_path = args_val[2]
-    lib_path = args_val[3]
-    model = -1
-    if args_val[4].lower() in model_map:
-        model = model_map[args_val[4].lower()]
-    else:
-        print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA\n", file=sys.stderr)
-        sys.exit(error_msg)
-    gpu_computability = args_val[5]
-    runs = args_val[6]
-    src = args_val[7]
-    write_to_file = int(args_val[8])
-    out_label = args_val[9]
-
+    exe_dir = args_val[1]
+    input_dir = args_val[2]
+    runs = args_val[3]
+    num_threads = args_val[4]
+    src = args_val[5]
+    write_to_file = int(args_val[6])
+    out_label = args_val[7]
+    
     # list code files
-    code_files = [f for f in os.listdir(code_path) if os.path.isfile(os.path.join(code_path, f))]
-    num_codes = len(code_files)
+    exe_files = [f for f in os.listdir(exe_dir) if os.path.isfile(os.path.join(exe_dir, f))]
+    num_codes = len(exe_files)
+    print("exe_dir: %s\nnum_exes: %d" % (exe_dir, num_codes))
 
     # list input files
-    input_files = [f for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_path, f))]
+    input_files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
     num_inputs = len(input_files)
-    print("num_codes: %d\nnum_inputs: %d\n" % (num_codes, num_inputs))
-    print("code_path: %s\ninput_path: %s\n" % (code_path, input_path))
+    print("input_dir: %s\nnum_inputs: %d\n" % (input_dir, num_inputs))
 
+    # create log directory if requested
+    log_file = ""
+    log_fin = ""
+    if write_to_file == 1:
+        log_dir = os.path.join("./", log_dir)
+        os.makedirs(log_dir, exist_ok=True)
+        log_name = out_label + "_log.txt"
+        log_file = os.path.join(log_dir, log_name)
+        log_fin = open(log_file, "a")
+        print(f"writing to log file {log_file}\n")
 
-    # create output directory
-    if write_to_file == 1: 
-        create_out_dir(out_dir)
-        current_directory = "./"
-        out_dir = os.path.join(current_directory, out_dir)
-        log_file = out_dir + out_label + "_log.txt"
-        print("created out directory.out_path %s\nlog_file %s\n" % (out_dir, log_file))
-
-    model_name = [".c", ".c", ".cu", ".cpp"]
-    # compile and run the codes
-    code_counter = 0
-    for code_file in code_files:
-        if code_file.endswith(model_name[model]):
-            code_counter += 1
-            compile_code(code_file, code_counter, num_codes, compile_cmd(gpu_computability, model, lib_path, os.path.join(code_path, code_file)))
-            if not compile_only:
-                run_code(code_file, input_files, num_inputs, input_path, runs, src, write_to_file, log_file)
-            delete_exe(exe_name)
-        else:
-            sys.exit('File %s does not match the programming model %s.' % (code_file, model_name[model]))
+    # run the programs
+    exe_counter = 0
+    for exe_file in exe_files:
+        exe_counter += 1
+        run_code(exe_dir, exe_file, input_files, num_inputs, input_dir, num_threads, runs, src, write_to_file, log_fin)
+    
+    if write_to_file == 1:
+        log_fin.close()
 
 

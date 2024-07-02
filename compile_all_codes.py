@@ -43,25 +43,31 @@ import os
 import re
 import subprocess
 
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' programming_model(optional) algorithm(optional)\n\
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' gpu_computability programming_model(optional) algorithm(optional)\n\
+\n\
+gpu_computability: Compute capability of targeted GPU, without decimal point (for CUDA)\n\
 \n\
 programming_model: ALL, C, CPP, OMP, or CUDA (case insensitive) default=ALL\n\
 algorithm: ALL, BFS, CC, MIS, MST, PR, SSSP, or TC (case insensitive) default=ALL\n'
 
-base_path = "./codeGen/"
-base_outdir = "./generatedCodes/"
+base_path = "./generatedCodes/"
+base_outdir = "./executables/"
 all_models = ["C", "CPP", "OMP", "CUDA"]
 all_codes = ["BFS", "CC", "MIS", "MST", "PR", "SSSP", "TC"]
 
 args = sys.argv
+if len(args) < 2:
+    sys.exit(error_msg)
+
+gpu_computability = args[1]
 
 model_arg = "ALL"
-if len(args) > 1:
-    model_arg = args[1].upper()
+if len(args) > 2:
+    model_arg = args[2].upper()
 
 codes_arg = "ALL"
-if len(args) > 2:
-    codes_arg = args[2].upper()
+if len(args) > 3:
+    codes_arg = args[3].upper()
 
 models = [model_arg]
 if model_arg == "ALL":
@@ -76,20 +82,23 @@ if codes_arg == "ALL":
 elif codes_arg not in all_codes:
     print("ERROR: Invalid algorithm argument")
     sys.exit(error_msg)
+
+#if CUDA, check gpu_computability argument
+if "CUDA" in models and not gpu_computability.isdigit():
+    print("ERROR: Invalid gpu_computability argument, specify a number")
+    sys.exit(error_msg)
     
-print(f"Generating {codes_arg} codes for {model_arg} model(s) using filters in configure.txt\n")
+print(f"Compiling {codes_arg} codes for {model_arg} model(s)\n")
 
 for model in models:
     for code in codes:
         folder_name = code + '-' + model
-        indir = os.path.join(os.path.join(base_path, model.lower()), folder_name)
+        indir = os.path.join(os.path.join(base_path, model), folder_name)
         if not os.path.isdir(indir):
-            sys.exit(indir + " not found")
+            print(f"{indir} not found, skipping...")
+            continue
         
         outdir = os.path.join(os.path.join(base_outdir, model), folder_name)
         os.makedirs(outdir, exist_ok=True)
         
-        template_files = [f for f in os.listdir(indir) if os.path.isfile(os.path.join(indir, f))]
-        for file in template_files:
-            filepath = os.path.join(indir, file)
-            subprocess.run(["python3", "./scripts/generate_codes.py", filepath, outdir, model])
+        subprocess.run(["python3", "./scripts/compile_codes.py", indir, outdir, model, gpu_computability])

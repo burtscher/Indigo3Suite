@@ -1,6 +1,6 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include <stdatomic.h>
-/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@Race@*/ typedef data_type shared_t;
+/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@RaceBug@*/ typedef data_type shared_t;
 typedef _Atomic int idx_t;
 #include "indigo_sssp_edge_c.h"
 //BlankLine
@@ -84,11 +84,11 @@ static int sssp_edge_data(void* arg)
       /*@-NonDeterm@*/ /*@-ReadWrite@*/
 
       /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
-      /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Race@*/ suppress
+      /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
       /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
 
       /*@+Determ@*/ /*@+ReadModifyWrite@*/
-      /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@Race@*/ suppress
+      /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
       /*@-Determ@*/ /*@-ReadModifyWrite@*/
 
       /*@+NonDeterm@*/
@@ -105,7 +105,7 @@ static int sssp_edge_data(void* arg)
     /*@RangeBug@*/ /*@NoRangeBug@*/ }
 
     /*@+Determ@*/
-    /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@Race@*/ dist_n[src] = s;
+    /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@RaceBug@*/ dist_n[src] = s;
     /*@-Determ@*/
   }
   return 0;

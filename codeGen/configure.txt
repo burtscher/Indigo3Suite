@@ -1,13 +1,16 @@
 /*************************************************************************************************************
 1. All the configure options
 CODE:
-	bug: 		/* all */
-	pattern: 	/* sssp */
-	option: 	/* (Thread, Warp, Block), (Atomic, NonAtomic, CudaAtomic), (NonPersist, persist), (IntType, LongType), (NonDeterm, Determ), (ReadWrite, ReadModifyWrite) */
+  bug:      /* nobug, hasbug, all */
+  pattern:  /* bfs, cc, mis, mst, pr, sssp, tc, all */
+  option:   /* (Thread, Warp, Block), (Atomic, CudaAtomic, RaceBug), (NonPersist, Persist), (NonDeterm, Determ), (ReadWrite, ReadModifyWrite), (Block, Cyclic), (Dup, NonDup), ... */
+  dataType: /* (IntType, LongType), (FloatType, DoubleType) */
 
 2. The keyword 'all' means to select all choices, e.g., option: {all} means to include all the options
-3. You can add '~' before each element in the pattern and option, e.g., {~atomicBug} means not to contain atomicBug
-4. You can add 'only_' before the option, e.g., only_atomicBug means only to contain atomicBug
+3. You can add '~' before each element in the pattern and option, e.g., {~RaceBug} means not to contain RaceBug
+4. You can add 'only_' before the option, e.g., only_RaceBug means only to contain RaceBug
+
+All options are described in the Indigo3 paper: https://doi.org/10.1145/3665251
 ***********************************************************************************************************/
 
 CODE:

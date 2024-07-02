@@ -45,10 +45,10 @@ import re
 
 copyright_defaultpath = "copyright.txt"
 config_defaultpath = "codeGen/configure.txt"
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' input_file output_directory programming_model config_file(optional) copyright_file(optional)\n\
+error_msg = 'USAGE: python3 ./' + os.path.basename(__file__) + ' input_file output_dir programming_model config_file(optional) copyright_file(optional)\n\
 \n\
-input_file: path to .idg file to generate codes from\n\
-output_directory: directory to place generated codes in (does not need to exist)\n\
+input_file: .idg file to generate codes from\n\
+output_dir: name of directory to place generated codes in (will be created)\n\
 programming_model: C, CPP, OMP, or CUDA (case insensitive)\n\
 \n\
 config_file: location of configure.txt, only necessary if working directory is not repository root\n\
@@ -215,7 +215,7 @@ elif 'all' in pattern_c:
 	f_pattern = True
 else:
 	for p in pattern_c:
-		if p in file_name:
+		if p.lower() in file_name.lower():
 			f_pattern = True
 
 num_codes = 0

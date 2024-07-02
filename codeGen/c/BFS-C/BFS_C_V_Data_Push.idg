@@ -1,6 +1,6 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include <stdatomic.h>
-/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@Race@*/ typedef data_type shared_t;
+/*@Atomic@*/ typedef _Atomic data_type shared_t; /*@RaceBug@*/ typedef data_type shared_t;
 typedef _Atomic int idx_t;
 #include "indigo_bfs_vertex_c.h"
 //BlankLine
@@ -89,11 +89,11 @@ static int bfs_vertex_data(void* arg)
         /*@-NonDeterm@*/ /*@-ReadWrite@*/
 
         /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
-        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Race@*/ suppress
+        /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
         /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
 
         /*@+Determ@*/ /*@+ReadModifyWrite@*/
-        /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@Race@*/ suppress
+        /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@RaceBug@*/ suppress
         /*@-Determ@*/ /*@-ReadModifyWrite@*/
 
           /*@+NonDup@*/
@@ -117,7 +117,7 @@ static int bfs_vertex_data(void* arg)
         /*@NonDup@*/ } /*@Dup@*/ }
       /*@-NonDeterm@*/ /*@-ReadWrite@*/
       /*@+Determ@*/
-      /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@Race@*/ suppress
+      /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@RaceBug@*/ suppress
       /*@-Determ@*/
     /*@RangeBug@*/ /*@NoRangeBug@*/ }
   }
