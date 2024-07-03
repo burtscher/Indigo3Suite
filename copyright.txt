@@ -32,3 +32,4 @@ URL: The latest version of the Indigo3 benchmark suite is available at https://g
 
 Publication: This work is described in detail in the following paper.
 Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Parallel Graph Analytics Benchmark Suite for Exploring Implementation Styles and Common Bugs." ACM Transactions on Parallel Computing. May 2024.
+Available: https://doi.org/10.1145/3665251
