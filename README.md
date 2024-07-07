@@ -44,7 +44,7 @@ A `./run_all_codes.py` script is also provided. It looks in the `executables` di
     
 For example, this command will run the compiled Connected Components C codes on the inputs in `./inputs/` using 32 CPU threads and write the output to `./run_logs/`:
 
-    python3 ./run_all_codes.py ./inputs/ 1 32 0 1
+    python3 ./run_all_codes.py ./inputs/ 1 32 0 1 c cc
 
 ## Inputs
 
