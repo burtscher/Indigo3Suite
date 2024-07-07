@@ -45,8 +45,8 @@ import subprocess
 
 error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' programming_model(optional) algorithm(optional)\n\
 \n\
-programming_model: ALL, C, CPP, OMP, or CUDA (case insensitive) default=ALL\n\
-algorithm: ALL, BFS, CC, MIS, MST, PR, SSSP, or TC (case insensitive) default=ALL\n'
+programming_model: C, CPP, OMP, CUDA, or ALL (case insensitive) default=ALL\n\
+algorithm: BFS, CC, MIS, MST, PR, SSSP, TC, or ALL (case insensitive) default=ALL\n'
 
 base_path = "./codeGen/"
 base_outdir = "./generatedCodes/"

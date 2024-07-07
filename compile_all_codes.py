@@ -43,12 +43,12 @@ import os
 import re
 import subprocess
 
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' gpu_computability programming_model(optional) algorithm(optional)\n\
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' gpu_compute_capability programming_model(optional) algorithm(optional)\n\
 \n\
-gpu_computability: Compute capability of targeted GPU, without decimal point (for CUDA)\n\
+gpu_compute_capability: Compute capability of targeted GPU, without decimal point (for CUDA)\n\
 \n\
-programming_model: ALL, C, CPP, OMP, or CUDA (case insensitive) default=ALL\n\
-algorithm: ALL, BFS, CC, MIS, MST, PR, SSSP, or TC (case insensitive) default=ALL\n'
+programming_model: C, CPP, OMP, CUDA, or ALL (case insensitive) default=ALL\n\
+algorithm: BFS, CC, MIS, MST, PR, SSSP, TC, or ALL (case insensitive) default=ALL\n'
 
 base_path = "./generatedCodes/"
 base_outdir = "./executables/"
@@ -59,7 +59,7 @@ args = sys.argv
 if len(args) < 2:
     sys.exit(error_msg)
 
-gpu_computability = args[1]
+gpu_compute_capability = args[1]
 
 model_arg = "ALL"
 if len(args) > 2:
@@ -83,9 +83,9 @@ elif codes_arg not in all_codes:
     print("ERROR: Invalid algorithm argument")
     sys.exit(error_msg)
 
-#if CUDA, check gpu_computability argument
-if "CUDA" in models and not gpu_computability.isdigit():
-    print("ERROR: Invalid gpu_computability argument, specify a number")
+#if CUDA, check gpu_compute_capability argument
+if "CUDA" in models and not gpu_compute_capability.isdigit():
+    print("ERROR: Invalid gpu_compute_capability argument, specify a number")
     sys.exit(error_msg)
     
 print(f"Compiling {codes_arg} codes for {model_arg} model(s)\n")
@@ -101,4 +101,4 @@ for model in models:
         outdir = os.path.join(os.path.join(base_outdir, model), folder_name)
         os.makedirs(outdir, exist_ok=True)
         
-        subprocess.run(["python3", "./scripts/compile_codes.py", indir, outdir, model, gpu_computability])
+        subprocess.run(["python3", "./scripts/compile_codes.py", indir, outdir, model, gpu_compute_capability])
