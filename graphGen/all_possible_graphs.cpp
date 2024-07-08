@@ -1,4 +1,5 @@
 #include "graphGenerator.h"
+#include <sys/stat.h>
 /* Generate all the possible graphs with k vertices */
 
 int main(int argc, char* argv[])
@@ -6,7 +7,14 @@ int main(int argc, char* argv[])
   // process the command line
   if (argc != 2) {fprintf(stderr, "USAGE: %s number_of_vertices\n", argv[0]); exit(-1);}
   const int n = atoi(argv[1]);
+  if (n > 5) {fprintf(stderr, "ERROR: at most 5 vertices\n"); exit(-1);}
   if (n < 1) {fprintf(stderr, "ERROR: at least 1 vertex\n"); exit(-1);}
+  const char* outpath = "./generatedGraphs";
+  #ifdef __linux__
+    mkdir(outpath, 0700);
+  #else
+    mkdir(outpath);
+  #endif
 
   // the largest decimal to represent the graph matrices
   const int c = 1 << n * (n - 1);
@@ -47,7 +55,7 @@ int main(int argc, char* argv[])
     // save the graph in CSR format, print the histogram
     if (symmetric) {
       char name[256];
-      sprintf(name, "undirected_all_possible_graph_%d_%dn_%de.egr", i, n, e);
+      sprintf(name, "%s/undirected_all_possible_graph_%d_%dn_%de.egr", outpath, i, n, e);
       printf("undirected_graph\n");
       saveAndPrint(n, e, name, edges);
     }

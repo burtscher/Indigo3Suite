@@ -1,17 +1,19 @@
 # Graph Generator
 
-All 64 possible undirected graphs with 4 vertices are present in the /inputs/ folder. This generator can produce similar sets for different vertex counts.
+This directory contains a selection of undirected graph generators for your convenience.
 
-To compile: 
+The /inputs/ folder includes all 64 possible undirected graphs with 4 vertices and a few examples from each of the other generators. 
 
-    make
+To compile any graph generator: 
 
-or
+    g++ -I../lib -O3 <graph_generator>.cpp -o graphGenerator
 
-    g++ -I../lib -O3 --std=c++11 all_possible_graphs.cpp -o graphGenerator
+To use a graph generator, run it to discover the parameters:
 
-To use the graph generator, specify the number of vertices the graphs should have:
+    ./graphGenerator
 
-    ./graphGenerator <num_of_vertices>
+The generators with a "random_seed" parameter will generate 1 graph for that seed. Try multiple seeds if you don't get the result you're looking for.
 
-There are 2n(n-1)<sup>2</sup> possible graphs with n vertices, so 5 vertices will generate 1024 files. Enter higher values at your own risk.
+If a graph is listed with twice as many edges as expected, this is due to the added reverse edges that make the graph undirected.
+
+Generated graphs will go into the `./generatedGraphs/` subdirectory.
