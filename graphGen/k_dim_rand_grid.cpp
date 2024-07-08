@@ -38,10 +38,7 @@ int main(int argc, char* argv[])
     std::mt19937 gen(seed);
     shuffle(map, map + n, gen);
 
-    std::set<int>* const edges1 = new std::set<int> [n];
-    std::set<int>* const edges2 = new std::set<int> [n];
     std::set<int>* const edges3 = new std::set<int> [n];
-    int m1 = 0;
     int m2 = 0;
 
     // generate edges
@@ -56,9 +53,6 @@ int main(int argc, char* argv[])
         int dst = src - coords[i] * mult[i];
         if (coords[i] + 1 < size) {
           dst += ((coords[i] + 1) % size) * mult[i];
-          edges1[map[src]].insert(map[dst]);
-          edges2[map[dst]].insert(map[src]);
-          m1++;
           if (edges3[map[src]].find(map[dst]) == edges3[map[src]].end()) {
             edges3[map[src]].insert(map[dst]);
             edges3[map[dst]].insert(map[src]);
@@ -80,8 +74,6 @@ int main(int argc, char* argv[])
     sprintf(name3, "%s/undirect%ddim_rand_grid_%dn_%de.egr", outpath, dim, n, m2 * 2);
     saveAndPrint(n, m2 * 2, name3, edges3);
     
-    delete [] edges1;
-    delete [] edges2;
     delete [] edges3;
   } else {
     printf("N=%i out of range\n", n);

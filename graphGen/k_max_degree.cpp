@@ -21,8 +21,6 @@ int main(int argc, char* argv[])
   #endif
 
   srand(seed);
-  std::set<int>* const edges1 = new std::set<int> [n];
-  std::set<int>* const edges2 = new std::set<int> [n];
   std::set<int>* const edges3 = new std::set<int> [n];
 
   // generate edges
@@ -32,13 +30,13 @@ int main(int argc, char* argv[])
     for (int j = 0; j < maxD / 2; j++) {
       dst = rand() % n;
       if (src != dst && edges3[dst].size() < maxD && edges3[src].size() < maxD) {
-        edges1[src].insert(dst);
-        edges2[dst].insert(src);
-        edges3[src].insert(dst);
-        edges3[dst].insert(src);
+        if (edges3[src].find(dst) == edges3[src].end()) {
+          edges3[src].insert(dst);
+          edges3[dst].insert(src);
+          m++;
+        }
       }
     }
-    m += edges1[src].size();
   }
 
   printf("\nUndirected in and out\n");
@@ -46,8 +44,6 @@ int main(int argc, char* argv[])
   sprintf(name3, "%s/undirect_%dmax_degree_%dn_%de.egr", outpath, maxD, n, m * 2);
   saveAndPrint(n, m * 2, name3, edges3);
 
-  delete [] edges1;
-  delete [] edges2;
   delete [] edges3;
 
   return 0;

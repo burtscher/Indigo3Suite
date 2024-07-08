@@ -28,10 +28,7 @@ int main(int argc, char* argv[])
     n *= size;
   }
   if (n >= minV && n <= maxV) {
-    std::set<int>* const edges1 = new std::set<int> [n];
-    std::set<int>* const edges2 = new std::set<int> [n];
     std::set<int>* const edges3 = new std::set<int> [n];
-    int m1 = 0;
     int m2 = 0;
 
     // generate edges
@@ -46,9 +43,6 @@ int main(int argc, char* argv[])
         int dst = src - coords[i] * mult[i];
         if (coords[i] + 1 < size) {
           dst += ((coords[i] + 1) % size) * mult[i];
-          edges1[src].insert(dst);
-          edges2[dst].insert(src);
-          m1++;
           if (edges3[src].find(dst) == edges3[src].end()) {
             edges3[src].insert(dst);
             edges3[dst].insert(src);
@@ -70,8 +64,6 @@ int main(int argc, char* argv[])
     sprintf(name3, "%s/undirect%ddim_grid_%dn_%de.egr", outpath, dim, n, m2 * 2);
     saveAndPrint(n, m2 * 2, name3, edges3);
     
-    delete [] edges1;
-    delete [] edges2;
     delete [] edges3;
   } else {
     printf("N=%i out of range\n", n);

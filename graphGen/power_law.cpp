@@ -29,8 +29,6 @@ int main(int argc, char* argv[])
 
   std::default_random_engine generator;
   std::geometric_distribution<int> distribution(average_d / n);
-  std::set<int>* const edges1 = new std::set<int> [n];
-  std::set<int>* const edges2 = new std::set<int> [n];
   std::set<int>* const edges3 = new std::set<int> [n];
   for (int i = 0; i < m; i++) {
     int src, dst;
@@ -44,8 +42,6 @@ int main(int argc, char* argv[])
       src = map[src];
       dst = map[dst];
     } while (edges3[src].find(dst) != edges3[src].end());
-    edges1[src].insert(dst);
-    edges2[dst].insert(src);
     edges3[src].insert(dst);
     edges3[dst].insert(src);
   }
@@ -55,8 +51,6 @@ int main(int argc, char* argv[])
   sprintf(name3, "%s/undirect_power_law_%dn_%de.egr", outpath, n, m * 2);
   saveAndPrint(n, m * 2, name3, edges3);
 
-  delete [] edges1;
-  delete [] edges2;
   delete [] edges3;
 
   return 0;

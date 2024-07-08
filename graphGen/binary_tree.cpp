@@ -66,8 +66,6 @@ int main(int argc, char* argv[])
   std::mt19937 gen(seed);
   shuffle(map, map + n, gen);
 
-  std::set<int>* const edges1 = new std::set<int> [n];
-  std::set<int>* const edges2 = new std::set<int> [n];
   std::set<int>* const edges3 = new std::set<int> [n];
   Node* root = NULL;
   root = insert(root, map[0], 0);
@@ -76,8 +74,6 @@ int main(int argc, char* argv[])
     int src = node->id;
     int dst = i;
     int parent_id = node->id;
-    edges1[src].insert(dst);
-    edges2[dst].insert(src);
     edges3[src].insert(dst);
     edges3[dst].insert(src);
     m++;
@@ -87,8 +83,6 @@ int main(int argc, char* argv[])
   sprintf(name3, "%s/undirect_binary_tree_%dn_%de.egr", outpath, n, m * 2);
   saveAndPrint(n, m * 2, name3, edges3);
   
-  delete [] edges1;
-  delete [] edges2;
   delete [] edges3;
 
   return 0;

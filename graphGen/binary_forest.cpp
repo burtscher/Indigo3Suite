@@ -25,8 +25,6 @@ int main(int argc, char* argv[])
   std::mt19937 gen(seed);
   shuffle(map, map + n, gen);
 
-  std::set<int>* const edges1 = new std::set<int> [n];
-  std::set<int>* const edges2 = new std::set<int> [n];
   std::set<int>* const edges3 = new std::set<int> [n];
   srand(seed);
   const int p = 5;
@@ -40,15 +38,19 @@ int main(int argc, char* argv[])
     if (left > 0) {
       dst = count + 1;
       if (dst < n) {
-        edges1[map[src]].insert(map[dst]);
-        m++;
+        if (edges3[map[src]].find(map[dst]) == edges3[map[src]].end()) {
+          edges3[map[src]].insert(map[dst]);
+          edges3[map[dst]].insert(map[src]);
+          m++;
+        }
         count = dst;
       }
     }
     if (right > 0) {
       dst = count + 1;
       if (dst < n) {
-        edges1[map[src]].insert(map[dst]);
+        edges3[map[src]].insert(map[dst]);
+        edges3[map[dst]].insert(map[src]);
         m++;
         count = dst;
       }
@@ -62,8 +64,6 @@ int main(int argc, char* argv[])
   sprintf(name3, "%s/undirect_binary_forest_%dn_%de.egr", outpath, n, m * 2);
   saveAndPrint(n, m * 2, name3, edges3);
 
-  delete [] edges2;
-  delete [] edges1;
   delete [] edges3;
 
   return 0;
