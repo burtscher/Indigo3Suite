@@ -176,6 +176,8 @@ int main(int argc, char* argv [])
   printf("CPP runtime: %.6f s\n", med);
   printf("CPP Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
 
+  printf("the pattern occurs %lld times\n\n", (long long)count);
+  
   // clean up
   freeECLgraph(&g);
   return 0;

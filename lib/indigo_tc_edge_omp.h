@@ -152,6 +152,9 @@ int main(int argc, char* argv [])
   const double med = median(runtimes, runs);
   printf("OMP runtime: %.6f s\n", med);
   printf("OMP Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
+
+  printf("the pattern occurs %lld times\n\n", (long long)count);
+  
   // clean up
   free(sp);
   freeECLgraph(&g);

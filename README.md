@@ -48,7 +48,7 @@ For example, this command will run the compiled Connected Components C codes on 
 
 ## Inputs
 
-Small sample inputs are available in the `inputs` directory. The `download_large_inputs.sh` script will download five additional large graphs and place them in a `large_inputs` directory.
+Small sample inputs are available in the `inputs` directory. The `download_large_inputs.sh` script will download five additional large graphs and place them in a `large_inputs` directory. Graph generators for creating additional small inputs are provided in the `graphGen` directory with their own README.
 
 The codes in this suite use ECL graphs stored in binary CSR format. Converters and additional inputs are available [here](https://userweb.cs.txstate.edu/~burtscher/research/ECLgraph/).
 
@@ -60,6 +60,6 @@ If you use Indigo3, please cite the following publication.
 [[doi]](https://doi.org/10.1145/3665251)
 [[pdf]](https://userweb.cs.txstate.edu/~burtscher/papers/topc24.pdf)
 
-You may also be interested in the predecessor suites, [Indigo](https://cs.txstate.edu/~burtscher/research/IndigoSuite/) and [Indigo2](https://cs.txstate.edu/~burtscher/research/Indigo2Suite/).
+You may also be interested in the predecessor suites [Indigo](https://cs.txstate.edu/~burtscher/research/IndigoSuite/) and [Indigo2](https://cs.txstate.edu/~burtscher/research/Indigo2Suite/).
 
 *This work has been supported in part by the National Science Foundation under Grant No. 1955367 as well as by an equipment donation from NVIDIA Corporation.*

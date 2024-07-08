@@ -12,7 +12,7 @@ To use a graph generator, run it to discover the parameters:
 
     ./graphGenerator
 
-The generators with a "random_seed" parameter will generate 1 graph for that seed. Try multiple seeds if you don't get the result you're looking for.
+The generators with a "random_seed" parameter will generate 1 graph for that seed. Try multiple seeds if you do not get the result you are looking for.
 
 If a graph is listed with twice as many edges as expected, this is due to the added reverse edges that make the graph undirected.
 

@@ -145,6 +145,8 @@ int main(int argc, char* argv [])
   printf("GPU runtime: %.6f s\n", med);
   printf("GPU Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
 
+  printf("the pattern occurs %lld times\n\n", (long long)count);
+  
   // clean up
   freeECLgraph(&g);
   cudaFree(d_g.nindex);

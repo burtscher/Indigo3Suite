@@ -65,7 +65,7 @@ def compile_cmd(arch_number, model, lib_path, code_file_name, out_dir):
 
 def compile_code(code_file, code_counter, num_codes, command):
     sys.stdout.flush()
-    print("compile %s, %s out of %s programs\n" % (code_file, code_counter, num_codes))
+    print("compiling %s, %s out of %s programs\n" % (code_file, code_counter, num_codes))
     sys.stdout.flush()
     try:
         subprocess.run(command)

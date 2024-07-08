@@ -157,25 +157,7 @@ int main(int argc, char* argv [])
   printf("C runtime: %.6f s\n", med);
   printf("C Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
 
-  /*
-  // verify
-  const int verify = atoi(argv[2]);
-  if ((verify != 0) && (verify != 1)) {
-    printf("has to be 0 (turn off) or 1 (turn on) verification");
-  }
-  if (verify) {
-    timeval start, end;
-    gettimeofday(&start, NULL);
-    */
-    
-    basic_t h_count = h_triCounting(g.nodes, g.nindex, g.nlist);
-    
-    //gettimeofday(&end, NULL);
-    // printf("CPU runtime: %.6fs\n", end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0);
-    if (h_count != count) printf("ERROR: host %ld device %ld", h_count, count);
-    else printf("the pattern occurs %ld times\n\n", count);
-  //}
-  
+  printf("the pattern occurs %lld times\n\n", (long long)count);
 
   // clean up
   freeECLgraph(&g);
