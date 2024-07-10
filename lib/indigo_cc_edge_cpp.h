@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
   for (int v = 0; v < g.nodes; v++) {
     s1.insert(label[v]);
   }
-  printf("number of connected components: %d\n", s1.size());
+  printf("number of connected components: %lld\n", (unsigned long long)s1.size());
 
   // free memory
   delete [] label;

@@ -1,7 +1,7 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include "indigo_sssp_vertex_cpp.h"
-/*@Race1@*/ typedef data_type shared_t; /*@Race2@*/ typedef std::atomic<data_type> shared_t; /*@Atomic@*/ typedef std::atomic<data_type> shared_t;
-/*@Race1@*/ typedef std::atomic<bool> flag_t; /*@Race2@*/ typedef bool flag_t; /*@Atomic@*/ typedef std::atomic<bool> flag_t; 
+/*@RaceBug1@*/ typedef data_type shared_t; /*@RaceBug2@*/ typedef std::atomic<data_type> shared_t; /*@Atomic@*/ typedef std::atomic<data_type> shared_t;
+/*@RaceBug1@*/ typedef std::atomic<bool> flag_t; /*@RaceBug2@*/ typedef bool flag_t; /*@Atomic@*/ typedef std::atomic<bool> flag_t; 
 //BlankLine
 
 /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
@@ -11,7 +11,7 @@
 /*@-Cyclic@*/
 
 /*@+Determ@*/
-/*@Race1@*/ suppress /*@Race2@*/ /*@Atomic@*/ 
+/*@RaceBug1@*/ suppress /*@RaceBug2@*/ /*@Atomic@*/ 
 /*@-Determ@*/
 
 /*@NonDeterm@*/ static void init(const int src, shared_t* const dist, const int size) /*@Determ@*/static void init(const int src, shared_t* const dist, shared_t* const dist_n, const int size)

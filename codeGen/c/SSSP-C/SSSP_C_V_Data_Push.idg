@@ -1,6 +1,6 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include <stdatomic.h>
-/*@Race1@*/ typedef data_type shared_t; /*@Atomic@*/ typedef _Atomic data_type shared_t;
+/*@RaceBug1@*/ typedef data_type shared_t; /*@Atomic@*/ typedef _Atomic data_type shared_t;
 typedef _Atomic int idx_t;
 #include "indigo_sssp_vertex_c.h"
 //BlankLine
@@ -89,11 +89,11 @@ static int sssp_vertex_data(void* arg)
         /*@-NonDeterm@*/ /*@-ReadWrite@*/
 
         /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
-        /*@Race1@*/ suppress /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
+        /*@RaceBug1@*/ suppress /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
         /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
 
         /*@+Determ@*/ /*@+ReadModifyWrite@*/
-        /*@Race1@*/ suppress /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
+        /*@RaceBug1@*/ suppress /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
         /*@-Determ@*/ /*@-ReadModifyWrite@*/
 
           /*@+NonDup@*/
@@ -117,7 +117,7 @@ static int sssp_vertex_data(void* arg)
         }
       /*@-NonDeterm@*/ /*@-ReadWrite@*/
       /*@+Determ@*/
-      /*@Race1@*/ dist_n[src] = s; /*@Atomic@*/ atomicMin(&dist_n[src], s);
+      /*@RaceBug1@*/ dist_n[src] = s; /*@Atomic@*/ atomicMin(&dist_n[src], s);
       /*@-Determ@*/
     /*@NoRangeBug@*/ } /*@RangeBug@*/
   }

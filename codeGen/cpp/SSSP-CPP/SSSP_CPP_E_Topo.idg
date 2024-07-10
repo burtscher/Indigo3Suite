@@ -1,7 +1,7 @@
 /*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
 #include "indigo_sssp_edge_cpp.h"
-/*@Race1@*/ typedef data_type shared_t; /*@Race2@*/ typedef std::atomic<data_type> shared_t; /*@Atomic@*/ typedef std::atomic<data_type> shared_t;
-/*@Race1@*/ typedef std::atomic<bool> flag_t; /*@Race2@*/ typedef bool flag_t; /*@Atomic@*/ typedef std::atomic<bool> flag_t; 
+/*@RaceBug1@*/ typedef data_type shared_t; /*@RaceBug2@*/ typedef std::atomic<data_type> shared_t; /*@Atomic@*/ typedef std::atomic<data_type> shared_t;
+/*@RaceBug1@*/ typedef std::atomic<bool> flag_t; /*@RaceBug2@*/ typedef bool flag_t; /*@Atomic@*/ typedef std::atomic<bool> flag_t; 
 //BlankLine
 
 /*@ReadWrite@*/ declare /*@ReadModifyWrite@*/ declare
@@ -60,18 +60,18 @@
       /*@-NonDeterm@*/ /*@-ReadWrite@*/
 
       /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
-      /*@Race1@*/ suppress /*@Race2@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
+      /*@RaceBug1@*/ suppress /*@RaceBug2@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist[dst], new_dist) > new_dist) {
       /*@-NonDeterm@*/ /*@-ReadModifyWrite@*/
 
       /*@+Determ@*/ /*@+ReadModifyWrite@*/
-      /*@Race1@*/ suppress /*@Race2@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
+      /*@RaceBug1@*/ suppress /*@RaceBug2@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) { /*@Atomic@*/ if (atomicMin(&dist_n[dst], new_dist) > new_dist) {
       /*@-Determ@*/ /*@-ReadModifyWrite@*/
 
       /*@+NonDeterm@*/
       goagain = 1;
       /*@-NonDeterm@*/
       /*@+Determ@*/
-      /*@Race1@*/ suppress /*@Race2@*/ goagain = 1; /*@Atomic@*/ goagain = 1;
+      /*@RaceBug1@*/ suppress /*@RaceBug2@*/ goagain = 1; /*@Atomic@*/ goagain = 1;
       /*@-Determ@*/
       }
     /*@NoRangeBug@*/ } /*@RangeBug@*/
