@@ -101,7 +101,7 @@ static const int ThreadsPerBlock = 512;
       }
 
       /*@+Determ@*/
-      /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@CudaAtomic@*/ label_n[src].fetch_min(new_label); /*@RaceBug@*/ atomicMin(&label_n[src], new_label);
+      /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@CudaAtomic@*/ label_n[src].fetch_min(new_label); /*@RaceBug@*/ if (label_n[src] > new_label) label_n[src] = new_label;
       /*@-Determ@*/
     }
     /*@Thread@*/ /*@Warp@*/ __syncwarp(); /*@Block@*/ __syncthreads();
@@ -112,19 +112,19 @@ static const int ThreadsPerBlock = 512;
     /*@Atomic@*/ atomicWrite(&label[v], d); /*@CudaAtomic@*/ label[v].store(d); /*@RaceBug@*/ suppress;
     /*@-NonDeterm@*/ /*@-Thread@*/
     /*@+NonDeterm@*/ /*@+Warp@*/
-    /*@Atomic@*/ atomicMin(&label[v], d); /*@CudaAtomic@*/ label[v].fetch_min(d); /*@RaceBug@*/ label[v] = d;
+    /*@Atomic@*/ atomicMin(&label[v], d); /*@CudaAtomic@*/ label[v].fetch_min(d); /*@RaceBug@*/ if (label[v] > d) label[v] = d;
     /*@-NonDeterm@*/ /*@-Warp@*/
     /*@+NonDeterm@*/ /*@+Block@*/
-    /*@Atomic@*/ atomicMin(&label[v], d); /*@CudaAtomic@*/ label[v].fetch_min(d); /*@RaceBug@*/ label[v] = d;
+    /*@Atomic@*/ atomicMin(&label[v], d); /*@CudaAtomic@*/ label[v].fetch_min(d); /*@RaceBug@*/ if (label[v] > d) label[v] = d;
     /*@-NonDeterm@*/ /*@-Block@*/
     /*@+Determ@*/ /*@+Thread@*/
       /*@Atomic@*/ atomicWrite(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].store(d); /*@RaceBug@*/ suppress;
     /*@-Determ@*/ /*@-Thread@*/
     /*@+Determ@*/ /*@+Warp@*/
-    /*@Atomic@*/ atomicMin(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].fetch_min(d); /*@RaceBug@*/ label_n[v] = d;
+    /*@Atomic@*/ atomicMin(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].fetch_min(d); /*@RaceBug@*/ if (label_n[v] > d) label_n[v] = d;
     /*@-Determ@*/ /*@-Warp@*/
     /*@+Determ@*/ /*@+Block@*/
-    /*@Atomic@*/ atomicMin(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].fetch_min(d); /*@RaceBug@*/ label_n[v] = d;
+    /*@Atomic@*/ atomicMin(&label_n[v], d); /*@CudaAtomic@*/ label_n[v].fetch_min(d); /*@RaceBug@*/ if (label_n[v] > d) label_n[v] = d;
     /*@-Determ@*/ /*@-Block@*/
       /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
       for (int j = beg; j < end; j++) {

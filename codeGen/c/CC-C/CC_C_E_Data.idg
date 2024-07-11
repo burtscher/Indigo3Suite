@@ -106,7 +106,7 @@ static int cc_edge_data(void* arg)
       }
     }
     /*@+Determ@*/
-    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ label_n[src] = new_label;
+    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ if (label_n[src] > new_label) label_n[src] = new_label;
     /*@-Determ@*/
   }
 }

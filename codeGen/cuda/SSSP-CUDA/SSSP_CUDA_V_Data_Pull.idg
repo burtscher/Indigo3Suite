@@ -103,7 +103,7 @@ static const int ThreadsPerBlock = 512;
         }
       }
       /*@+Determ@*/
-      /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@CudaAtomic@*/ dist_n[src].fetch_min(s); /*@RaceBug@*/ atomicMin(&dist_n[src], s);
+      /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@CudaAtomic@*/ dist_n[src].fetch_min(s); /*@RaceBug@*/ if (dist_n[src] > s) dist_n[src] = s;
       /*@-Determ@*/
     }
     /*@Thread@*/ /*@Warp@*/ __syncwarp(); /*@Block@*/ __syncthreads();
@@ -113,19 +113,19 @@ static const int ThreadsPerBlock = 512;
     /*@Atomic@*/ atomicWrite(&dist[v], d); /*@CudaAtomic@*/ dist[v].store(d); /*@RaceBug@*/ suppress;
     /*@-NonDeterm@*/ /*@-Thread@*/
     /*@+NonDeterm@*/ /*@+Warp@*/
-    /*@Atomic@*/ atomicMin(&dist[v], d); /*@CudaAtomic@*/ dist[v].fetch_min(d); /*@RaceBug@*/ dist[v] = d;
+    /*@Atomic@*/ atomicMin(&dist[v], d); /*@CudaAtomic@*/ dist[v].fetch_min(d); /*@RaceBug@*/ if (dist[v] > d) dist[v] = d;
     /*@-NonDeterm@*/ /*@-Warp@*/
     /*@+NonDeterm@*/ /*@+Block@*/
-    /*@Atomic@*/ atomicMin(&dist[v], d); /*@CudaAtomic@*/ dist[v].fetch_min(d); /*@RaceBug@*/ dist[v] = d;
+    /*@Atomic@*/ atomicMin(&dist[v], d); /*@CudaAtomic@*/ dist[v].fetch_min(d); /*@RaceBug@*/ if (dist[v] > d) dist[v] = d;
     /*@-NonDeterm@*/ /*@-Block@*/
     /*@+Determ@*/ /*@+Thread@*/
       /*@Atomic@*/ atomicWrite(&dist_n[v], d); /*@CudaAtomic@*/ dist_n[v].store(d); /*@RaceBug@*/ suppress;
     /*@-Determ@*/ /*@-Thread@*/
     /*@+Determ@*/ /*@+Warp@*/
-    /*@Atomic@*/ atomicMin(&dist_n[v], d); /*@CudaAtomic@*/ dist_n[v].fetch_min(d); /*@RaceBug@*/ dist_n[v] = d;
+    /*@Atomic@*/ atomicMin(&dist_n[v], d); /*@CudaAtomic@*/ dist_n[v].fetch_min(d); /*@RaceBug@*/ if (dist_n[v] > d) dist_n[v] = d;
     /*@-Determ@*/ /*@-Warp@*/
     /*@+Determ@*/ /*@+Block@*/
-    /*@Atomic@*/ atomicMin(&dist_n[v], d); /*@CudaAtomic@*/ dist_n[v].fetch_min(d); /*@RaceBug@*/ dist_n[v] = d;
+    /*@Atomic@*/ atomicMin(&dist_n[v], d); /*@CudaAtomic@*/ dist_n[v].fetch_min(d); /*@RaceBug@*/ if (dist_n[v] > d) dist_n[v] = d;
     /*@-Determ@*/ /*@-Block@*/
 
       /*@Thread@*/ /*@Warp@*/ if (threadIdx.x % WarpSize == 0) { /*@Block@*/ if (threadIdx.x == 0) {

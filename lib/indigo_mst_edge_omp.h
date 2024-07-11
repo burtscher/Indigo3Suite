@@ -102,7 +102,7 @@ int main(int argc, char* argv[])
       weight += g.eweight[e];
     }
   }
-  printf("MST includes %d edges with %d weight\n", count, weight);
+  printf("MSF includes %d edges with %d weight\n", count, weight);
 
   // free memory
   free(sp);

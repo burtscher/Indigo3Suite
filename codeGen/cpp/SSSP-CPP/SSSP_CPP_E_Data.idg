@@ -96,7 +96,7 @@ typedef std::atomic<int> idx_t;
     /*@RangeBug@*/ /*@NoRangeBug@*/ }
 
     /*@+Determ@*/
-    /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@RaceBug@*/ dist_n[src] = s;
+    /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@RaceBug@*/ if (dist_n[src] > s) dist_n[src] = s;
     /*@-Determ@*/
   }
 }

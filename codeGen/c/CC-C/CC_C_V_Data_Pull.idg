@@ -74,7 +74,7 @@ static int cc_vertex_data(void* arg)
         updated = true;
       }
       /*@+Determ@*/
-      /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ label_n[src] = new_label;
+      /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ if (label_n[src] > new_label) label_n[src] = new_label;
       /*@-Determ@*/
     }
     //BlankLine

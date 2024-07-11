@@ -86,7 +86,7 @@ typedef std::atomic<int> idx_t;
       }
     }
     /*@+Determ@*/
-    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ label_n[src] = new_label;
+    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@RaceBug@*/ if (label_n[src] > new_label) label_n[src] = new_label;
     /*@-Determ@*/
   }
 }

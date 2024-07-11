@@ -132,6 +132,17 @@ int main(int argc, char* argv[])
   printf("runtime: %.6fs\n", med);
   printf("Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
 
+  // print result
+  int count = 0;
+  int weight = 0;
+  for (int e = 0; e < g.edges; e++) {
+    if (included[e]) {
+      count++;
+      weight += g.eweight[e];
+    }
+  }
+  printf("MSF includes %d edges with %d weight\n", count, weight);
+  
   // free memory
   free(included);
   cudaFree(d_g.nindex);

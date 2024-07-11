@@ -74,7 +74,7 @@ static const int ThreadsPerBlock = 512;
     /*@+NonDeterm@*/ /*@+ReadWrite@*/
     /*@Atomic@*/ data_type d = atomicRead(&label[dst]); /*@CudaAtomic@*/ data_type d = label[dst].load(); /*@RaceBug@*/ data_type d = label[dst];
     /*@NoLivelockBug@*/ if (d > new_label) { /*@LivelockBug@*/ if (d >= new_label) {
-    /*@Atomic@*/ atomicWrite(&label[dst], new_label); /*@CudaAtomic@*/label[dst].store(new_label); /*@RaceBug@*/label[dst] = new_label;
+    /*@Atomic@*/ atomicWrite(&label[dst], new_label); /*@CudaAtomic@*/ label[dst].store(new_label); /*@RaceBug@*/ label[dst] = new_label;
     /*@-NonDeterm@*/ /*@-ReadWrite@*/
 
     /*@+NonDeterm@*/ /*@+ReadModifyWrite@*/
@@ -98,7 +98,7 @@ static const int ThreadsPerBlock = 512;
     }
 
     /*@+Determ@*/
-    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@CudaAtomic@*/ label_n[src].fetch_min(new_label); /*@RaceBug@*/ label_n[src] = new_label;
+    /*@Atomic@*/ atomicMin(&label_n[src], new_label); /*@CudaAtomic@*/ label_n[src].fetch_min(new_label); /*@RaceBug@*/ if (label_n[src] > new_label) label_n[src] = new_label;
     /*@-Determ@*/
   }
 }

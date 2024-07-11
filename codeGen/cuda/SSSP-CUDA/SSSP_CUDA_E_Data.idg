@@ -109,7 +109,7 @@ static const int ThreadsPerBlock = 512;
     }
 
     /*@+Determ@*/
-    /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@CudaAtomic@*/ dist_n[src].fetch_min(s); /*@RaceBug@*/ dist_n[src] = s;
+    /*@Atomic@*/ atomicMin(&dist_n[src], s); /*@CudaAtomic@*/ dist_n[src].fetch_min(s); /*@RaceBug@*/ if (dist_n[src] > s) dist_n[src] = s;
     /*@-Determ@*/
   }
 }
