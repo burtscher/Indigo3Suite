@@ -62,4 +62,11 @@ If you use Indigo3, please cite the following publication.
 
 You may also be interested in the predecessor suites [Indigo](https://cs.txstate.edu/~burtscher/research/IndigoSuite/) and [Indigo2](https://cs.txstate.edu/~burtscher/research/Indigo2Suite/).
 
+The following paper describes ideas on how to use Indigo3 (aka Sapphire) for teaching parallel programming.
+
+* Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Sapphire: a Tool for Teaching Parallel Programming in Hundreds of Different Ways." Proceedings of the 16th Annual International Conference on Education and New Learning Technologies. July 2024.
+[[doi]](https://doi.org/10.21125/edulearn.2024.1136)
+[[pdf]](https://userweb.cs.txstate.edu/~burtscher/papers/edulearn24.pdf)
+[[pptx]](https://userweb.cs.txstate.edu/~burtscher/slides/edulearn24.pptx)
+
 *This work has been supported in part by the National Science Foundation under Grant No. 1955367 as well as by an equipment donation from NVIDIA Corporation.*
