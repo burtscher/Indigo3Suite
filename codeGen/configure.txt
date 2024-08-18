@@ -3,12 +3,14 @@
 CODE:
   bug:      /* nobug, hasbug, all */
   pattern:  /* bfs, cc, mis, mst, pr, sssp, tc, all */
-  option:   /* (Thread, Warp, Block), (Atomic, CudaAtomic, RaceBug), (NonPersist, Persist), (NonDeterm, Determ), (ReadWrite, ReadModifyWrite), (Block, Cyclic), (Dup, NonDup), ... */
+  option:   /* (Vertex, Edge), (Pull, Push), (Data, Topo), (Thread, Warp, Block), (Atomic, CudaAtomic), 
+               (NonPersist, Persist), (NonDeterm, Determ), (ReadWrite, ReadModifyWrite), (Block, Cyclic), (Dup, NonDup), ... */
   dataType: /* (IntType, LongType), (FloatType, DoubleType) */
 
 2. The keyword 'all' means to select all choices, e.g., option: {all} means to include all the options
-3. You can add '~' before each element in the pattern and option, e.g., {~RaceBug} means not to contain RaceBug
-4. You can add 'only_' before the option, e.g., only_RaceBug means only to contain RaceBug
+3. You can add '~' before each element in the pattern and option, e.g., {all, ~RaceBug} explicitly excludes RaceBug
+4. You can add 'only_' before an option, e.g., {only_RaceBug} explicitly requires RaceBug
+5. Individual bug types can be specified or excluded in the option category, e.g., {RaceBug, NbrBoundsBug} includes all versions with RaceBug or NbrBoundsBug present
 
 All options are described in the Indigo3 paper: https://doi.org/10.1145/3665251
 ***********************************************************************************************************/

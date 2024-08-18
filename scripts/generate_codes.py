@@ -55,73 +55,92 @@ config_file: location of configure.txt, only necessary if working directory is n
 copyright_file: location of copyright.txt, only necessary if working directory is not repository root\n'
 model_map = {"omp" : ".c", "c" : ".c", "cuda" : ".cu", "cpp" : ".cpp"}
 
-def needBugComment(tag, code):
-	if ("Race" in tag and "No" not in tag and "Atomic" not in code and code) or ("Bug" in tag and "No" not in tag and code): # if Race or Bug
+def needBugComment(o_tag, o_code):
+	tag = o_tag.lower()
+	code = o_code.lower()
+	if ("race" in tag and "no" not in tag and "atomic" not in code and code) or ("bug" in tag and "no" not in tag and code): # if Race or Bug
 		return True
 	else:
 		return False
 
 # filter data type
-def filter_datat(idg_file, code_file, dataType):
-	if 'all' in dataType:
-		return True
-	datat = ['IntType', 'short', 'LongType', 'FloatType', 'DoubleType', 'CharType']
+def filter_datat(idg_file, code_file, dataTypes):
+	isKeeper = False
+	datat = ['inttype', 'longtype', 'floattype', 'doubletype']
 	file_datat = []
 	f = code_file.replace(idg_file, '')
 	f = code_file.replace(' ', '')
 	f = f.split('_')
+	f = [x.lower() for x in f]
 	for i in f:
 		if i in datat:
 			file_datat.append(i)
-	if len(dataType) == 0:
+	if len(dataTypes) == 0:
 		sys.exit('ERROR, please select at least 1 data type')
-	elif 'all' in dataType:
-		return True
 	else:
 		if (len(file_datat) == 0):
-			if 'int' in dataType:
+			if 'int' in dataTypes:
 				return True
 		else:
-			for d in file_datat:
-				if ('~' not in dataType) and (d in dataType):
-					return True
-				elif ('~' in dataType) and (d not in dataType):
-					return True
-	return False
+			for t in dataTypes:
+				if t == 'all':
+					isKeeper = True
+				elif '~' in t: # exclude this type
+					t = t.replace('~', '')
+					if t in file_datat:
+						return False
+				elif 'only' in t: # need this type
+					t = t.replace('only_', '')
+					if t not in file_datat:
+						return False
+					else:
+						isKeeper = True
+				else: # type included
+					t = t.replace('all_', '')
+					if t in file_datat:
+						isKeeper = True
+	return isKeeper
 
 def numBugs(f):
 	num = 0
 	for i in f:
-		if 'Bug' in i and 'No' not in i:
+		if 'bug' in i and 'no' not in i:
 			num += 1
 	return num
 
 # filter options
 def filter_opt(idg_file, code_file, options):
-	if 'all' in options:
-		return True
-	f = code_file.replace(idg_file, '')
+	isKeeper = False
+	f = code_file.replace('_'.join(idg_file.split('_')[:2]), '')
+	f = f.replace('_V_', 'Vertex_')
+	f = f.replace('_E', 'Edge_')
 	f = f.split('_')
-	f.remove('')
-	datat = ['IntType', 'short', 'LongType', 'float', 'double', 'char']
+	if '' in f:
+		f.remove('')
+	f = [x.lower() for x in f]
+	datat = ['inttype', 'longtype', 'floattype', 'doubletype']
 	for i in datat:
 		if i in f:
 			f.remove(i)
 	else:
 		for b in options:
-			if 'only' in b:
-				b = b.replace('only_', '')
-				if (b in f) and (numBugs(f) == 1):
-					return True
-			elif '~' in b:
+			if b == 'all': # all tags included by default unless otherwise excluded
+				isKeeper = True
+			elif '~' in b: # exclude this tag
 				b = b.replace('~', '')
-				if b not in f:
-					return True
-			else:
-				b = b.replace('all_', '')
 				if b in f:
-					return True
-	return False
+					return False
+			elif 'only' in b: # need this tag
+				b = b.replace('only_', '')
+				if b not in f:
+					return False
+				else:
+					isKeeper = True
+			else: # tag included
+				b = b.replace('all_', '') # just in case
+				if b in f:
+					isKeeper = True
+	return isKeeper
 
 # read configure file
 def read_configure(args):
@@ -151,7 +170,7 @@ def read_configure(args):
 					idx = codek.index(k)
 					l = l.replace(k, '')
 					for i in l.split(','):
-						code_c[idx].append(i)
+						code_c[idx].append(i.lower())
 		if readc and ('INPUTS' in l):
 			break;
 	return code_c
@@ -213,10 +232,14 @@ if len(pattern_c) == 0:
 	sys.exit('ERROR, please select at least 1 pattern\n')
 elif 'all' in pattern_c:
 	f_pattern = True
-else:
-	for p in pattern_c:
-		if p.lower() in file_name.lower():
-			f_pattern = True
+for p in pattern_c:
+	if '~' in p:
+		p = p.replace('~', '')
+		if p in file_name.lower():
+			f_pattern = False
+			break
+	elif p in file_name.lower():
+		f_pattern = True
 
 num_codes = 0
 num_bugs = 0
