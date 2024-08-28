@@ -112,8 +112,8 @@ def numBugs(f):
 def filter_opt(idg_file, code_file, options):
 	isKeeper = False
 	f = code_file.replace('_'.join(idg_file.split('_')[:2]), '')
-	f = f.replace('_V_', 'Vertex_')
-	f = f.replace('_E', 'Edge_')
+	f = f.replace('_V_', '_Vertex_')
+	f = f.replace('_E_', '_Edge_')
 	f = f.split('_')
 	if '' in f:
 		f.remove('')
