@@ -60,7 +60,7 @@ If you use Indigo3, please cite the following publication.
 [[doi]](https://doi.org/10.1145/3665251)
 [[pdf]](https://userweb.cs.txstate.edu/~burtscher/papers/topc24.pdf)
 
-You may also be interested in the predecessor suites [Indigo](https://cs.txstate.edu/~burtscher/research/IndigoSuite/) and [Indigo2](https://cs.txstate.edu/~burtscher/research/Indigo2Suite/).
+You may also be interested in the predecessor suites [Indigo](https://cs.txstate.edu/~burtscher/research/IndigoSuite/) and [Indigo2](https://cs.txstate.edu/~burtscher/research/Indigo2Suite/) as well as in the related [ECL-Suite](https://github.com/burtscher/ECL-Suite/).
 
 The following paper describes ideas on how to use Indigo3 (aka Sapphire) for teaching parallel programming.
 
