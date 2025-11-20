@@ -1,0 +1,222 @@
+#include "hip/hip_runtime.h"
+
+/*@FloatType@*/ typedef float data_type; /*@DoubleType@*/ typedef double data_type;
+typedef data_type basic_t;
+/*@NoRaceBug@*/ declare /*@RaceBug@*/ declare
+/*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
+/*@NoNbrBoundsBug@*/ declare /*@NbrBoundsBug@*/ declare
+/*@NoSyncBug@*/ declare /*@SyncBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@NoPrecedenceBug@*/ /*@PrecedenceBug@*/ suppress
+/*@-Persist@*/
+static const int ThreadsPerBlock = 512;
+#include "indigo_pr_hip.h"
+
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+
+//BlankLine
+
+__global__ void contrib(int nodes, data_type* scores, int* degree, data_type* outgoing_contrib)
+{
+  /*@+NonPersist@*/
+  /*@Thread@*/ int src = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int src = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int src = blockIdx.x;
+  if (src < nodes) {
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@-Persist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ for (int src = tid; src < nodes; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src < nodes; src += gridDim.x * (ThreadsPerBlock / warpSize)) { /*@Block@*/ for (int src = tid; src < nodes; src += gridDim.x) {
+  /*@-Persist@*/
+    outgoing_contrib[src] = scores[src] / degree[src];
+  }
+}
+//BlankLine
+/*@Determ@*/  __global__ void pull(const ECLgraph g, data_type* scores, data_type* outgoing_contrib, data_type* diff, data_type base_score) /*@NonDeterm@*/  __global__ void pull(const ECLgraph g, data_type* scores, data_type* outgoing_contrib, data_type* diff, data_type base_score, int* degree)
+{
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+  /*@+BlockAdd@*/
+  __shared__ data_type local_diff;
+  if (threadIdx.x == 0) local_diff = 0;
+  /*@NoSyncBug@*/ __syncthreads(); /*@SyncBug@*/
+  /*@-BlockAdd@*/
+
+  /*@+Warp@*/
+  const int lane = threadIdx.x % warpSize;
+  /*@-Warp@*/
+  /*@+Block@*/ /*@+or@*/ /*@+Reduction@*/
+  __shared__ data_type buffer[COMPILETIME_warpSize];
+  /*@-Block@*/ /*@-or@*/ /*@-Reduction@*/
+
+  data_type error = 0;
+  /*@+NonPersist@*/
+  /*@Thread@*/ int src = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int src = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int src = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (src < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@-Persist@*/
+
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
+  /*@Thread@*/ for (int src = tid; src < N; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src < N; src += gridDim.x * (ThreadsPerBlock / warpSize)) { /*@Block@*/ for (int src = tid; src < N; src += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/ 
+
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  /*@Thread@*/ for (int src = tid; src <= N; src += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int src = tid; src <= N; src += gridDim.x * (ThreadsPerBlock / warpSize)) { /*@Block@*/ for (int src = tid; src <= N; src += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
+
+    data_type incoming_total = 0;
+    const int beg = g.nindex[src];
+    const int end = g.nindex[src + 1];
+
+    /*@+NoNbrBoundsBug@*/ 
+    /*@Thread@*/ for (int i = beg; i < end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % warpSize; i < end; i += warpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i < end; i += ThreadsPerBlock) {
+    /*@-NoNbrBoundsBug@*/ 
+
+    /*@+NbrBoundsBug@*/ 
+    /*@Thread@*/ for (int i = beg; i <= end; i++) { /*@Warp@*/ for (int i = beg + threadIdx.x % warpSize; i <= end; i += warpSize) { /*@Block@*/ for (int i = beg + threadIdx.x; i <= end; i += ThreadsPerBlock) {
+    /*@-NbrBoundsBug@*/ 
+
+      int dst = g.nlist[i];
+      /*@Determ@*/ incoming_total += outgoing_contrib[dst]; /*@NonDeterm@*/ incoming_total +=  scores[dst] / degree[dst];
+    }
+
+    /*@+NoSyncBug@*/
+    /*@Thread@*/ /*@Warp@*/__syncwarp(); /*@Block@*/ __syncthreads();
+    /*@-NoSyncBug@*/
+
+    /*@+SyncBug@*/
+    /*@Thread@*/ suppress /*@Warp@*/ /*@Block@*/
+    /*@-SyncBug@*/
+
+    /*@Thread@*/ /*@Warp@*/ /*@Block@*/ incoming_total = block_sum_reduction(incoming_total, buffer);
+    /*@+Warp@*/
+      // data_type tmp = __shfl_up_sync(~0, incoming_total, 1);
+      // if (lane >= 1) incoming_total += tmp;
+      // tmp = __shfl_up_sync(~0, incoming_total, 2);
+      // if (lane >= 2) incoming_total += tmp;
+      // tmp = __shfl_up_sync(~0, incoming_total, 4);
+      // if (lane >= 4) incoming_total += tmp;
+      // tmp = __shfl_up_sync(~0, incoming_total, 8);
+      // if (lane >= 8) incoming_total += tmp;
+      // tmp = __shfl_up_sync(~0, incoming_total, 16);
+      // if (lane >= 16) incoming_total += tmp;
+      
+      data_type tmp;
+      for (int offset = warpSize / 2; offset > 0; offset /= 2) {
+        tmp = __shfl_down_sync(~0, incoming_total, offset);
+        if (lane < offset) incoming_total += tmp; // 31 is less than 32 and should add; 32 + 32 is out of range, should not add
+      }
+    /*@-Warp@*/
+
+    /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+    data_type old_score = scores[src];
+    const data_type value = base_score + kDamp * incoming_total;
+    scores[src] = value;
+    error = fabs(value - old_score);
+
+    /*@+NoRaceBug@*/
+    /*@GlobalAdd@*/ atomicAdd(diff, error); /*@BlockAdd@*/ atomicAdd_block(&local_diff, error); /*@Reduction@*/
+    /*@-NoRaceBug@*/
+
+    /*@+RaceBug@*/
+    /*@GlobalAdd@*/ *diff += error; /*@BlockAdd@*/ local_diff += error; /*@Reduction@*/
+    /*@-RaceBug@*/
+
+
+    /*@+BlockAdd@*/
+    /*@Thread@*/ /*@Warp@*/ } /*@Block@*/}
+    atomicAdd(diff, local_diff);
+    /*@-BlockAdd@*/
+
+
+    /*@+Reduction@*/ 
+    /*@Thread@*/ /*@Warp@*/ } /*@Block@*/}
+    error = block_sum_reduction(error, buffer);
+    /*@NoRaceBug@*/ if (threadIdx.x == 0) atomicAdd(diff, error); /*@RaceBug@*/ if (threadIdx.x == 0) *diff += error;
+    /*@-Reduction@*/ 
+
+    /*@+GlobalAdd@*/
+    /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+    /*@-GlobalAdd@*/
+  }
+}
+//BlankLine
+double PR_GPU(const ECLgraph g, data_type *scores, int* degree)
+{
+  int WarpSize;
+  hipDeviceGetAttribute(&WarpSize, hipDeviceAttributeWarpSize, 0);
+  
+  // declare device variables
+  ECLgraph d_g = g;
+  int *d_degree;
+  data_type *d_scores, *d_sums, *d_contrib;
+  data_type *d_diff, h_diff;
+
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+
+  // allocate device memory
+  hipMalloc((void **)&d_degree, g.nodes * sizeof(int));
+  hipMalloc((void **)&d_scores, g.nodes * sizeof(data_type));
+  hipMalloc((void **)&d_sums, g.nodes * sizeof(data_type));
+  hipMalloc((void **)&d_contrib, g.nodes * sizeof(data_type));
+  hipMalloc((void **)&d_diff, sizeof(data_type));
+  if (hipSuccess != hipMalloc((void **)&d_g.nindex, (g.nodes + 1) * sizeof(int))) fprintf(stderr, "ERROR: could not allocate nindex\n");
+  if (hipSuccess != hipMalloc((void **)&d_g.nlist, g.edges * sizeof(int))) fprintf(stderr, "ERROR: could not allocate nlist\n");
+
+  // copy data to device
+  hipMemcpy(d_degree, degree, g.nodes * sizeof(int), hipMemcpyHostToDevice);
+  hipMemcpy(d_scores, scores, g.nodes * sizeof(data_type), hipMemcpyHostToDevice);
+  if (hipSuccess != hipMemcpy(d_g.nindex, g.nindex, (g.nodes + 1) * sizeof(int), hipMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of index to device failed\n");
+  if (hipSuccess != hipMemcpy(d_g.nlist, g.nlist, g.edges * sizeof(int), hipMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of nlist to device failed\n");
+
+  /*@+NonPersist@*/ /*@+NoPrecedenceBug@*/ 
+  /*@Thread@*/ const int blocks = (g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const unsigned int blocks = ((unsigned int)g.nodes * (unsigned int)WarpSize + (unsigned int)ThreadsPerBlock - 1) / (unsigned int)ThreadsPerBlock; /*@Block@*/ const int blocks = ((unsigned int)g.nodes * (unsigned int)ThreadsPerBlock + (unsigned int)ThreadsPerBlock - 1) / (unsigned int)ThreadsPerBlock;
+  /*@-NonPersist@*/ /*@-NoPrecedenceBug@*/ 
+
+  /*@+NonPersist@*/ /*@+PrecedenceBug@*/ 
+  /*@Thread@*/ suppress /*@Warp@*/ const unsigned int blocks = (g.nodes * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = (g.nodes * ThreadsPerBlock + ThreadsPerBlock - 1) / ThreadsPerBlock;
+  /*@-NonPersist@*/ /*@-PrecedenceBug@*/ 
+
+  const data_type base_score = (1.0f - kDamp) / (data_type)g.nodes;
+
+  // timer
+  struct timeval start, end;
+  int iter = 0;
+
+  gettimeofday(&start, NULL);
+  do {
+    iter++;
+    h_diff = 0;
+    if (hipSuccess != hipMemcpy(d_diff, &h_diff, sizeof(data_type), hipMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of h_diff to device failed\n");
+
+    /*@Determ@*/ contrib<<<blocks, ThreadsPerBlock>>>(g.nodes, d_scores, d_degree, d_contrib); /*@NonDeterm@*/
+
+    /*@Determ@*/ pull<<<blocks, ThreadsPerBlock>>>(d_g, d_scores, d_contrib, d_diff, base_score); /*@NonDeterm@*/ pull<<<blocks, ThreadsPerBlock>>>(d_g, d_scores, d_contrib, d_diff, base_score, d_degree);
+
+    if (hipSuccess != hipMemcpy(&h_diff, d_diff, sizeof(data_type), hipMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of d_diff from device failed\n");
+  } while (h_diff > EPSILON && iter < MAX_ITER);
+  hipDeviceSynchronize();
+  gettimeofday(&end, NULL);
+
+  if (iter < MAX_ITER) iter++;
+  const double runtime = end.tv_sec + end.tv_usec / 1000000.0 - start.tv_sec - start.tv_usec / 1000000.0;
+  printf("GPU iterations = %d.\n", iter);
+
+  if (hipSuccess != hipMemcpy(scores, d_scores, g.nodes * sizeof(data_type), hipMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of d_scores from device failed\n");
+
+  hipFree(d_degree);
+  hipFree(d_scores);
+  hipFree(d_sums);
+  hipFree(d_contrib);
+  hipFree(d_diff);
+  return runtime;
+}

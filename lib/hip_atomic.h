@@ -1,6 +1,4 @@
-#!/usr/bin/python3 -u
-
-'''
+/*
 This file is part of the Indigo3 benchmark suite version 1.0.
 
 BSD 3-Clause License
@@ -35,65 +33,45 @@ URL: The latest version of the Indigo3 benchmark suite is available at https://g
 
 Publication: This work is described in detail in the following paper.
 Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Parallel Graph Analytics Benchmark Suite for Exploring Implementation Styles and Common Bugs." ACM Transactions on Parallel Computing. May 2024.
-'''
+*/
 
 
-import sys
-import os
-import re
-import subprocess
+#ifndef ATOMIC
+#define ATOMIC
 
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' programming_models(default=ALL) algorithms(default=ALL)\n\
-\n\
-programming_models: C, CPP, OMP, CUDA, HIP, and ALL (case insensitive, comma separated) default=ALL\n\
-algorithms: BFS, CC, MIS, MST, PR, SSSP, TC, and ALL (case insensitive, comma separated) default=ALL\n'
+#if defined(__HIP_PLATFORM_AMD__)
+  #define COMPILETIME_warpSize warpSize
+#else
+  #define COMPILETIME_warpSize 32
+#endif //defined(__HIP_PLATFORM_AMD__)
 
-base_path = "./codeGen/"
-base_outdir = "./generatedCodes/"
-all_models = ["C", "CPP", "OMP", "CUDA", "HIP"]
-all_codes = ["BFS", "CC", "MIS", "MST", "PR", "SSSP", "TC"]
+#include <cuda/atomic>
+__device__ inline basic_t atomicRead(basic_t* const addr)
+{
+  return ((cuda::atomic<basic_t>*)addr)->load(cuda::memory_order_relaxed);
+}
 
-args = sys.argv
+__device__ inline void atomicWrite(basic_t* const addr, const basic_t val)
+{
+  ((cuda::atomic<basic_t>*)addr)->store(val, cuda::memory_order_relaxed);
+}
 
-model_arg = "ALL"
-if len(args) > 1:
-    model_arg = args[1].upper()
+#if defined(__HIP_PLATFORM_AMD__)
 
-codes_arg = "ALL"
-if len(args) > 2:
-    codes_arg = args[2].upper()
+  // AMD doesn't need nor define __syncwarp
+  static inline __device__ void __syncwarp() {}
 
-models = set(model_arg.split(','))
-if "ALL" in model_arg:
-    models = all_models
-else:
-    for model in models:
-        if model not in all_models:
-          print("ERROR: Invalid programming_model argument:", model)
-          sys.exit(error_msg)
+  // *_sync versions are not fully supported in HIP and unnecessary on AMD GPUs https://github.com/ROCm/hip/issues/1491#issuecomment-778652063
+  #define __shfl_sync(mask, val, src) __shfl(val, src)
+  #define __shfl_up_sync(mask, val, src) __shfl_up(val, src)
+  #define __shfl_down_sync(mask, val, src) __shfl_down(val, src)
+  #define __shfl_xor_sync(mask, val, src) __shfl_xor(val, src)
+  #define __any_sync(mask, predicate) __any(predicate)
+  #define __all_sync(mask, predicate) __all(predicate)
 
-codes = set(codes_arg.split(','))
-if "ALL" in codes_arg:
-    codes = all_codes
-else:
-    for code in codes:
-        if code not in all_codes:
-          print("ERROR: Invalid algorithm argument:", code)
-          sys.exit(error_msg)
+  // HIP does block scope on shared memory
+  #define atomicAdd_block atomicAdd
 
-print(f"Generating {', '.join(codes)} codes for {', '.join(models)} model(s) using filters in configure.txt\n")
+#endif //defined(__HIP_PLATFORM_AMD__)
 
-for model in models:
-    for code in codes:
-        folder_name = code + '-' + model
-        indir = os.path.join(os.path.join(base_path, model.lower()), folder_name)
-        if not os.path.isdir(indir):
-            sys.exit(indir + " not found")
-        
-        outdir = os.path.join(os.path.join(base_outdir, model), folder_name)
-        os.makedirs(outdir, exist_ok=True)
-        
-        template_files = [f for f in os.listdir(indir) if os.path.isfile(os.path.join(indir, f))]
-        for file in template_files:
-            filepath = os.path.join(indir, file)
-            subprocess.run(["python3", "./scripts/generate_codes.py", filepath, outdir, model])
+#endif // ATOMIC

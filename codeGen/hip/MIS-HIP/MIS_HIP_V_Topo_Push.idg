@@ -1,0 +1,210 @@
+#include "hip/hip_runtime.h"
+/*@NonDeterm@*/ declare /*@Determ@*/ declare
+/*@IntType@*/ declare /*@LongType@*/ declare
+/*@NonPersist@*/ declare /*@Persist@*/ declare
+/*@Atomic@*/ declare /*@CudaAtomic@*/ #include <cuda/atomic> /*@RaceBug@*/ declare
+/*@Thread@*/ declare /*@Warp@*/ declare /*@Block@*/ declare
+
+/*@NoFieldBug@*/ declare /*@FieldBug@*/ declare
+/*@NoExcessThreadsBug@*/ declare /*@ExcessThreadsBug@*/ declare /*@NoBoundsBug@*/ declare /*@BoundsBug@*/ declare
+
+/*@+Persist@*/
+/*@NoExcessThreadsBug@*/ suppress /*@ExcessThreadsBug@*/ suppress /*@NoBoundsBug@*/ /*@BoundsBug@*/ 
+/*@-Persist@*/
+/*@NoUninitializedBug@*/ declare /*@UninitializedBug@*/ declare
+
+/*@Atomic@*/ typedef int flag_t; /*@CudaAtomic@*/ typedef cuda::atomic<int> flag_t; /*@RaceBug@*/ typedef int flag_t;
+/*@IntType@*/ typedef int data_type; /*@LongType@*/ typedef unsigned long long data_type;
+typedef data_type basic_t;
+
+static const int ThreadsPerBlock = 512;
+
+//BlankLine
+
+#include "indigo_mis_vertex_hip.h"
+//BlankLine
+
+/*@+NonDeterm@*/
+static __global__ void init(data_type* const priority, flag_t* const status, const int size)
+/*@-NonDeterm@*/
+/*@+Determ@*/
+static __global__ void init(data_type* const priority, flag_t* const status, flag_t* const status_n, const int size)
+/*@-Determ@*/
+{
+  // initialize arrays
+  const int v = threadIdx.x + blockIdx.x * ThreadsPerBlock;
+  if (v < size) 
+  {
+    /*@IntType@*/ priority[v] = hash(v + 712313887); /*@LongType@*/ priority[v] = ((unsigned long)hash(v + 712313887)) | ((unsigned long)hash(v + 683067839) << (sizeof (unsigned int) * 8));
+    /*@NoUninitializedBug@*/ status[v] = undecided; /*@UninitializedBug@*/
+    /*@NonDeterm@*/ /*@Determ@*/ status_n[v] = undecided;
+  }
+}
+//BlankLine
+
+/*@+NonDeterm@*/
+static __global__ void mis(const ECLgraph g, const data_type* const priority, flag_t* const status, flag_t* const goagain)
+/*@-NonDeterm@*/
+/*@+Determ@*/
+static __global__ void mis(const ECLgraph g, const data_type* const priority, flag_t* const status, flag_t* const status_n, flag_t* const goagain)
+/*@-Determ@*/
+{
+  /*@Thread@*/ /*@Warp@*/ const int lane = threadIdx.x % warpSize; /*@Block@*/ 
+  /*@NoFieldBug@*/ const int N = g.nodes; /*@FieldBug@*/ const int N = g.edges;
+  
+  // go over all the nodes
+  /*@+NonPersist@*/
+  /*@Thread@*/ int v = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int v = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int v = blockIdx.x;
+  /*@NoExcessThreadsBug@*/ if (v < N) { /*@ExcessThreadsBug@*/ { /*@NoBoundsBug@*/ suppress /*@BoundsBug@*/ suppress 
+  /*@-NonPersist@*/
+
+  /*@+Persist@*/ /*@+NoBoundsBug@*/ 
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@Thread@*/ for (int v = tid; v < N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v < N; v += gridDim.x * (ThreadsPerBlock / warpSize)) { /*@Block@*/ for (int v = tid; v < N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-NoBoundsBug@*/ 
+  
+  /*@+Persist@*/ /*@+BoundsBug@*/ 
+  /*@Thread@*/ int tid = threadIdx.x + blockIdx.x * ThreadsPerBlock; /*@Warp@*/ int tid = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpSize; /*@Block@*/ int tid = blockIdx.x;
+  /*@Thread@*/ for (int v = tid; v <= N; v += gridDim.x * ThreadsPerBlock) { /*@Warp@*/ for (int v = tid; v <= N; v += gridDim.x * (ThreadsPerBlock / warpSize)) { /*@Block@*/ for (int v = tid; v <= N; v += gridDim.x) {
+  /*@-Persist@*/ /*@-BoundsBug@*/ 
+
+    //BlankLine
+    /*@+Thread@*/
+    /*@Atomic@*/ if (atomicRead(&status[v]) == undecided) { /*@CudaAtomic@*/ if (status[v].load() == undecided) { /*@RaceBug@*/ if (status[v] == undecided) {
+    /*@-Thread@*/
+    /*@+Warp@*/
+    /*@Atomic@*/ if (__any_sync(~0, (lane == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__any_sync(~0, (lane == 0) && (status[v].load() == undecided))) { /*@RaceBug@*/ if (__any_sync(~0, (lane == 0) && (status[v] == undecided))) {
+    /*@-Warp@*/
+    /*@+Block@*/
+    /*@Atomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (atomicRead(&status[v]) == undecided))) { /*@CudaAtomic@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v].load() == undecided))) { /*@RaceBug@*/ if (__syncthreads_or((threadIdx.x == 0) && (status[v] == undecided))) {
+    /*@-Block@*/
+      int i = g.nindex[v];
+      // try to find a non-excluded neighbor whose priority is higher
+      /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+        /*@+Atomic@*/ 
+        while ((i < g.nindex[v + 1]) && ((atomicRead(&status[g.nlist[i]]) == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-Atomic@*/
+        /*@+CudaAtomic@*/ 
+        while ((i < g.nindex[v + 1]) && ((status[g.nlist[i]].load() == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-CudaAtomic@*/
+        /*@+RaceBug@*/
+        while ((i < g.nindex[v + 1]) && ((status[g.nlist[i]] == excluded) || (priority[v] > priority[g.nlist[i]]) || ((priority[v] == priority[g.nlist[i]]) && (v > g.nlist[i])))) {
+        /*@-RaceBug@*/
+          i++;
+        }
+      /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      /*@Thread@*/ if (i < g.nindex[v + 1]) { /*@Warp@*/ if (__any_sync(~0, (lane == 0) && (i < g.nindex[v + 1]))) { /*@Block@*/ if (__syncthreads_or((threadIdx.x == 0) && (i < g.nindex[v + 1]))) {
+        // found such a neighbor -> status still unknown
+        /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+          /*@Atomic@*/ atomicWrite(goagain, 1); /*@CudaAtomic@*/ *goagain = 1; /*@RaceBug@*/ *goagain = 1;
+        /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+      } else {
+        // no such neighbor -> all neighbors are "excluded" and v is "included"
+        /*@Thread@*/ /*@Warp@*/ if (lane == 0) { /*@Block@*/ if (threadIdx.x == 0) {
+          /*@+NonDeterm@*/
+          /*@Atomic@*/ atomicWrite(&status[v], included); /*@CudaAtomic@*/ status[v].store(included); /*@RaceBug@*/ status[v] = included;
+          /*@-NonDeterm@*/
+          /*@+Determ@*/
+          /*@Atomic@*/ atomicWrite(&status_n[v], included); /*@CudaAtomic@*/ status_n[v].store(included); /*@RaceBug@*/ suppress
+          /*@-Determ@*/
+        /*@Thread@*/ /*@Warp@*/ } /*@Block@*/ }
+        
+        /*@Thread@*/ for (int j = g.nindex[v]; j < g.nindex[v + 1]; j++) { /*@Warp@*/ for (int j = g.nindex[v] + lane; j < g.nindex[v + 1]; j += warpSize) { /*@Block@*/ for (int j = g.nindex[v] + threadIdx.x; j < g.nindex[v + 1]; j += ThreadsPerBlock) {
+          /*@+NonDeterm@*/
+          /*@Atomic@*/ atomicWrite(&status[g.nlist[j]], excluded); /*@CudaAtomic@*/ status[g.nlist[j]].store(excluded); /*@RaceBug@*/ status[g.nlist[j]] = excluded;
+          /*@-NonDeterm@*/
+          /*@+Determ@*/
+          /*@Atomic@*/ atomicWrite(&status_n[g.nlist[j]], excluded); /*@CudaAtomic@*/ status_n[g.nlist[j]].store(excluded); /*@RaceBug@*/ suppress
+          /*@-Determ@*/
+        }
+      }
+    }
+  }
+}
+//BlankLine
+
+static double GPUmis_vertex(const ECLgraph g, data_type* const priority, int* const status)
+{
+  int WarpSize;
+  hipDeviceGetAttribute(&WarpSize, hipDeviceAttributeWarpSize, 0);
+  
+  flag_t* d_goagain;
+  if (hipSuccess != hipMalloc((void **)&d_goagain, sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_goagain\n");
+  data_type* d_priority;
+  if (hipSuccess != hipMalloc((void **)&d_priority, g.nodes * sizeof(data_type))) fprintf(stderr, "ERROR: could not allocate d_priority\n");
+  flag_t* d_status;
+  if (hipSuccess != hipMalloc((void **)&d_status, g.nodes * sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_status\n");
+  /*@+Determ@*/
+  flag_t* d_status_new;
+  if (hipSuccess != hipMalloc((void **)&d_status_new, g.nodes * sizeof(flag_t))) fprintf(stderr, "ERROR: could not allocate d_status_new\n");
+  /*@-Determ@*/
+  //BlankLine
+
+  /*@+NonPersist@*/
+  /*@Thread@*/ const int blocks = (g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Warp@*/ const int blocks = ((long)g.nodes * WarpSize + ThreadsPerBlock - 1) / ThreadsPerBlock; /*@Block@*/ const int blocks = g.nodes;
+  /*@-NonPersist@*/
+  /*@+Persist@*/
+  const int ThreadsBound = GPUinfo(0, false);
+  const int blocks = ThreadsBound / ThreadsPerBlock;
+  /*@-Persist@*/
+  //BlankLine
+
+  /*@+NonDeterm@*/ /*@+NonPersist@*/
+  /*@Thread@*/ init<<<blocks, ThreadsPerBlock>>>(d_priority, d_status, g.nodes); /*@Warp@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes); /*@Block@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes);
+  /*@-NonDeterm@*/ /*@-NonPersist@*/
+  /*@+Determ@*/ /*@+NonPersist@*/
+  /*@Thread@*/ init<<<blocks, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes); /*@Warp@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes); /*@Block@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes);
+  /*@-Determ@*/ /*@-NonPersist@*/
+  /*@+Persist@*/
+  /*@NonDeterm@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, g.nodes); /*@Determ@*/ init<<<(g.nodes + ThreadsPerBlock - 1) / ThreadsPerBlock, ThreadsPerBlock>>>(d_priority, d_status, d_status_new, g.nodes);
+  /*@-Persist@*/
+  
+  //BlankLine
+  struct timeval beg, end;
+  gettimeofday(&beg, NULL);
+  //BlankLine
+
+  flag_t goagain;
+  int iter = 0;
+  do {
+    iter++;
+    goagain = 0;
+    if (hipSuccess != hipMemcpy(d_goagain, &goagain, sizeof(flag_t), hipMemcpyHostToDevice)) fprintf(stderr, "ERROR: copying of goagain to device failed\n");
+    //BlankLine
+    
+    /*@+NonDeterm@*/
+    mis<<<blocks, ThreadsPerBlock>>>(g, d_priority, d_status, d_goagain);
+    /*@-NonDeterm@*/
+    /*@+Determ@*/
+    mis<<<blocks, ThreadsPerBlock>>>(g, d_priority, d_status, d_status_new, d_goagain);
+    /*@-Determ@*/
+    //BlankLine
+    
+    /*@NonDeterm@*/ /*@Determ@*/ if (hipSuccess != hipMemcpy(d_status, d_status_new, g.nodes * sizeof(flag_t), hipMemcpyDeviceToDevice)) fprintf(stderr, "ERROR: copying of d_status_new to d_status on device failed\n");
+    if (hipSuccess != hipMemcpy(&goagain, d_goagain, sizeof(flag_t), hipMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of goagain from device failed\n");
+  } while (goagain);
+
+  //BlankLine
+  hipDeviceSynchronize();
+  gettimeofday(&end, NULL);
+  const double runtime = end.tv_sec - beg.tv_sec + (end.tv_usec - beg.tv_usec) / 1000000.0;
+  //BlankLine
+
+  CheckCuda();
+  if (hipSuccess != hipMemcpy(status, d_status, g.nodes * sizeof(flag_t), hipMemcpyDeviceToHost)) fprintf(stderr, "ERROR: copying of status from device failed\n"); 
+  //BlankLine
+
+  // determine and print set size
+  int cnt = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (status[v] == included) cnt++;
+  }
+  printf("iterations: %d,  elements in set: %d (%.1f%%)\n", iter, cnt, 100.0 * cnt / g.nodes);
+  //BlankLine
+
+  /*@NonDeterm@*/ /*@Determ@*/ hipFree(d_status_new);
+  hipFree(d_goagain);
+  hipFree(d_status);
+  hipFree(d_priority);
+  return runtime;
+}

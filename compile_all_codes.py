@@ -43,57 +43,65 @@ import os
 import re
 import subprocess
 
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' gpu_compute_capability programming_model(optional) algorithm(optional)\n\
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' programming_models(default=ALLCPU) algorithms(default=ALL) nvidia_compute_capability(optional for non-NVIDIA)\n\
 \n\
-gpu_compute_capability: Compute capability of targeted GPU, without decimal point (for CUDA)\n\
-\n\
-programming_model: C, CPP, OMP, CUDA, or ALL (case insensitive) default=ALL\n\
-algorithm: BFS, CC, MIS, MST, PR, SSSP, TC, or ALL (case insensitive) default=ALL\n'
+programming_models: C, CPP, OMP, CUDA, HIP-AMD, HIP-NVIDIA, and ALLCPU (case insensitive, comma separated) default=ALLCPU\n\
+algorithms: BFS, CC, MIS, MST, PR, SSSP, TC, and ALL (case insensitive, comma separated) default=ALL\n\
+nvidia_compute_capability: Compute capability of targeted NVIDIA GPU, without decimal point (optional for non-NVIDIA)\n'
 
 base_path = "./generatedCodes/"
 base_outdir = "./executables/"
-all_models = ["C", "CPP", "OMP", "CUDA"]
+all_models = ["C", "CPP", "OMP", "CUDA", "HIP-AMD", "HIP-NVIDIA"]
+all_CPU = ["C", "CPP", "OMP"]
 all_codes = ["BFS", "CC", "MIS", "MST", "PR", "SSSP", "TC"]
 
 args = sys.argv
-if len(args) < 2:
-    sys.exit(error_msg)
+# if len(args) < 2:
+    # sys.exit(error_msg)
 
-gpu_compute_capability = args[1]
-
-model_arg = "ALL"
-if len(args) > 2:
-    model_arg = args[2].upper()
+model_arg = "ALLCPU"
+if len(args) > 1:
+    model_arg = args[1].upper()
 
 codes_arg = "ALL"
+if len(args) > 2:
+    codes_arg = args[2].upper()
+
+nvidia_compute_capability = None
 if len(args) > 3:
-    codes_arg = args[3].upper()
+    nvidia_compute_capability = args[3]
 
-models = [model_arg]
-if model_arg == "ALL":
-    models = all_models
-elif model_arg not in all_models:
-    print("ERROR: Invalid programming_model argument")
-    sys.exit(error_msg)
+models = set(model_arg.split(','))
+if "ALLCPU" in model_arg:
+    models.remove("ALLCPU")
+    models.update(all_CPU)
+else:
+    for model in models:
+        if model not in all_models:
+          print("ERROR: Invalid programming_model argument:", model)
+          sys.exit(error_msg)
 
-codes = [codes_arg]
-if codes_arg == "ALL":
+codes = set(codes_arg.split(','))
+if "ALL" in codes_arg:
     codes = all_codes
-elif codes_arg not in all_codes:
-    print("ERROR: Invalid algorithm argument")
-    sys.exit(error_msg)
+else:
+    for code in codes:
+        if code not in all_codes:
+          print("ERROR: Invalid algorithm argument:", code)
+          sys.exit(error_msg)
 
-#if CUDA, check gpu_compute_capability argument
-if "CUDA" in models and not gpu_compute_capability.isdigit():
-    print("ERROR: Invalid gpu_compute_capability argument, specify a number")
+#if CUDA, check nvidia_compute_capability argument
+if ('CUDA' in models or 'HIP-NVIDIA' in models) and (not nvidia_compute_capability or not nvidia_compute_capability.isdigit()):
+    print("ERROR: Targeting NVIDIA but nvidia_compute_capability argument is missing or invalid, specify a number")
     sys.exit(error_msg)
     
-print(f"Compiling {codes_arg} codes for {model_arg} model(s)\n")
+print(f"Compiling {', '.join(codes)} codes for {', '.join(models)} model(s)\n")
 
 for model in models:
     for code in codes:
-        folder_name = code + '-' + model
-        indir = os.path.join(os.path.join(base_path, model), folder_name)
+        short_model = model.split('-')[0] # Remove -AMD and -NVIDIA from HIP model name to match directory name
+        folder_name = code + '-' + short_model
+        indir = os.path.join(os.path.join(base_path, short_model), folder_name)
         if not os.path.isdir(indir):
             print(f"{indir} not found, skipping...")
             continue
@@ -101,4 +109,8 @@ for model in models:
         outdir = os.path.join(os.path.join(base_outdir, model), folder_name)
         os.makedirs(outdir, exist_ok=True)
         
-        subprocess.run(["python3", "./scripts/compile_codes.py", indir, outdir, model, gpu_compute_capability])
+        run_cmd = ["python3", "./scripts/compile_codes.py", indir, outdir, model]
+        if nvidia_compute_capability:
+            run_cmd.append(nvidia_compute_capability)
+        
+        subprocess.run(run_cmd)

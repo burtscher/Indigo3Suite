@@ -43,30 +43,33 @@ import os
 import re
 import subprocess
 
-error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' input_dir runs num_threads src write_to_file programming_model(optional) algorithm(optional)\n\
+error_msg = 'USAGE: ./' + os.path.basename(__file__) + ' input_dir runs num_threads src write_to_file(default=0) programming_models(default=ALL) algorithms(default=ALL)\n\
 \n\
 input_dir: directory containing input graphs to use\n\
 runs: the number of runs per input per program (reports median runtime)\n\
 num_threads: the number of threads to use for C, CPP, OpenMP\n\
 src: source vertex id for the BFS and SSSP codes\n\
-write_to_file: 1 to write output to log files in ./run_logs/\n\
+write_to_file: 1 to write output to log files in ./run_logs/ (default=0)\n\
 \n\
-programming_model: C, CPP, OMP, CUDA, or ALL (case insensitive) default=ALL\n\
-algorithm: BFS, CC, MIS, MST, PR, SSSP, TC, or ALL (case insensitive) default=ALL\n'
+programming_models: C, CPP, OMP, CUDA, HIP, or ALL (case insensitive, comma separated) default=ALL\n\
+algorithms: BFS, CC, MIS, MST, PR, SSSP, TC, or ALL (case insensitive, comma separated) default=ALL\n'
 
 base_path = "./executables/"
-all_models = ["C", "CPP", "OMP", "CUDA"]
+all_models = ["C", "CPP", "OMP", "CUDA", "HIP"]
 all_codes = ["BFS", "CC", "MIS", "MST", "PR", "SSSP", "TC"]
 
 args = sys.argv
-if len(args) < 6:
+if len(args) < 5:
     sys.exit(error_msg)
 
 input_dir = args[1]
 runs = args[2]
 num_threads = args[3]
 src = args[4]
-write_to_file = args[5]
+
+write_to_file = "0"
+if len(args) > 5:
+  write_to_file = args[5]
 
 model_arg = "ALL"
 if len(args) > 6:
@@ -76,19 +79,23 @@ codes_arg = "ALL"
 if len(args) > 7:
     codes_arg = args[7].upper()
 
-models = [model_arg]
-if model_arg == "ALL":
+models = set(model_arg.split(','))
+if "ALL" in model_arg:
     models = all_models
-elif model_arg not in all_models:
-    print("ERROR: Invalid programming_model argument")
-    sys.exit(error_msg)
+else:
+    for model in models:
+        if model not in all_models:
+          print("ERROR: Invalid programming_model argument:", model)
+          sys.exit(error_msg)
 
-codes = [codes_arg]
-if codes_arg == "ALL":
+codes = set(codes_arg.split(','))
+if "ALL" in codes_arg:
     codes = all_codes
-elif codes_arg not in all_codes:
-    print("ERROR: Invalid algorithm argument")
-    sys.exit(error_msg)
+else:
+    for code in codes:
+        if code not in all_codes:
+          print("ERROR: Invalid algorithm argument:", code)
+          sys.exit(error_msg)
 
 #check num_threads argument
 if ("C" in models or "CPP" in models or "OMP" in models) and not num_threads.isdigit():
@@ -100,7 +107,7 @@ if ("BFS" in codes or "SSSP" in codes) and not src.isdigit():
     print("ERROR: Invalid src argument, specify a number")
     sys.exit(error_msg)
     
-print(f"Running {codes_arg} codes for {model_arg} model(s) on inputs from {input_dir}\n")
+print(f"Running {', '.join(codes)} codes for {', '.join(models)} model(s) on inputs from {input_dir}\n")
 
 for model in models:
     for code in codes:

@@ -49,11 +49,11 @@ error_msg = 'USAGE: python3 ./' + os.path.basename(__file__) + ' input_file outp
 \n\
 input_file: .idg file to generate codes from\n\
 output_dir: name of directory to place generated codes in (will be created)\n\
-programming_model: C, CPP, OMP, or CUDA (case insensitive)\n\
+programming_model: C, CPP, OMP, CUDA, or HIP (case insensitive)\n\
 \n\
 config_file: location of configure.txt, only necessary if working directory is not repository root\n\
 copyright_file: location of copyright.txt, only necessary if working directory is not repository root\n'
-model_map = {"omp" : ".c", "c" : ".c", "cuda" : ".cu", "cpp" : ".cpp"}
+model_map = {"omp" : ".c", "c" : ".c", "cuda" : ".cu", "cpp" : ".cpp", "hip" : ".cu"}
 
 def needBugComment(o_tag, o_code):
 	tag = o_tag.lower()
@@ -194,7 +194,7 @@ def find_code(line_tags, count, p_all_tags1, re_split):
 				return code_result, idx
 
 def find_line_tags(l):
-	re_tags = re.findall('\/\*\@[+]*[-]*[a-zA-Z]*[0-9]*\@\*\/', l)
+	re_tags = re.findall(r'/\*\@[+]*[-]*[a-zA-Z]*[0-9]*\@\*/', l)
 	re_tags = [substr.replace('/*@', '@') for substr in re_tags]
 	re_tags = [substr.replace('@*/', '@') for substr in re_tags]
 	line_tags = [substr.replace('@', '') for substr in re_tags]
@@ -214,7 +214,7 @@ model = -1
 if args[3].lower() in model_map:
 	model = model_map[args[3].lower()]
 else:
-	print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA\n", file=sys.stderr)
+	print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA, HIP\n", file=sys.stderr)
 	sys.exit(error_msg)
 save_path = os.path.join(out_path, out_directory)
 file_name = (os.path.split(in_file_path))[1].replace('.idg', '')
@@ -253,8 +253,8 @@ if (f_pattern):
 
 	# read code and tags
 	for l in lines:
-		if (re.search('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)): # search the tag
-			re_tags = re.findall('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
+		if (re.search(r'/\*\@[a-zA-Z]*[0-9]*\@\*/', l)): # search the tag
+			re_tags = re.findall(r'/\*\@[a-zA-Z]*[0-9]*\@\*/', l)
 			re_tags = [substr.replace('/*@', '@') for substr in re_tags]
 			re_tags = [substr.replace('@*/', '@') for substr in re_tags]
 			line_tags = [substr.replace('@', '') for substr in re_tags]
@@ -358,7 +358,7 @@ if (f_pattern):
 						find_nested_tag = False
 						continue
 					elif line_tags and find_nested_tag: # the +tag is activated
-						re_split = re.split('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
+						re_split = re.split(r'/\*\@[a-zA-Z]*[0-9]*\@\*/', l)
 						ostr, idx = find_code(line_tags, count, p_all_tags[i], re_split)
 						
 						if needBugComment(line_tags[idx], ostr):	# check if this nested line needs its own bug label
@@ -378,11 +378,11 @@ if (f_pattern):
 								ostr = "// " + ptag.strip().replace('+','') + " here\n" + ' ' * lspace + ostr
 
 				elif line_tags: # if the line has tags and not in the nested tag section
-					re_split = re.split('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
+					re_split = re.split(r'/\*\@[a-zA-Z]*[0-9]*\@\*/', l)
 					code = ''
 
 					if ((not nested) and ('+' not in line_tags[0]) and ('-' not in line_tags[0])):
-						re_split = re.split('\/\*\@[a-zA-Z]*[0-9]*\@\*\/', l)
+						re_split = re.split(r'/\*\@[a-zA-Z]*[0-9]*\@\*/', l)
 						code, idx = find_code(line_tags, count, p_all_tags[i], re_split)
 						
 						if needBugComment(line_tags[idx], code):

@@ -42,22 +42,24 @@ import os
 import sys
 import subprocess
 
+libhipcxx_path = "../libhipcxx/" # Default is relative to root dir of Indigo3Suite
 lib_defaultpath = "lib/"
-error_msg = 'USAGE: python3 ./' + os.path.basename(__file__) + ' code_dir output_dir programming_model gpu_computability lib_dir(optional)\n\
+
+error_msg = 'USAGE: python3 ./' + os.path.basename(__file__) + ' code_dir output_dir programming_model nvidia_compute_capability(optional for non-NVIDIA) lib_dir(optional)\n\
 \n\
 code_dir: directory containing generated codes to compile\n\
 output_dir: name of directory to place compiled executables in (will be created)\n\
-programming_model: C, CPP, OMP, or CUDA (case insensitive)\n\
-gpu_computability: Compute capability of targeted GPU, without decimal point (for CUDA)\n\
+programming_model: C, CPP, OMP, CUDA, HIP-AMD, or HIP-NVIDIA (case insensitive)\n\
+nvidia_compute_capability: Compute capability of targeted NVIDIA GPU, without decimal point (optional for non-NVIDIA)\n\
 \n\
-lib_dir: library directory, only necessary if working directory is not repsitory root\n'
-model_map = {"omp" : 0, "c" : 1, "cuda" : 2, "cpp" : 3}
+lib_dir: path to Indigo3Suite/lib/, only necessary if current working directory is not repository root\n'
+model_map = {"omp" : 0, "c" : 1, "cuda" : 2, "cpp" : 3, "hip-amd" : 4, "hip-nvidia" : 5}
 
 # compute the compile command
 def compile_cmd(arch_number, model, lib_path, code_file_name, out_dir):
-    compilers = ["gcc", "gcc", "nvcc", "g++"]
+    compilers = ["gcc", "gcc", "nvcc", "g++", "hipcc", "hipcc"]
     optimize_flag = "-O3"
-    parallel_flags = ["-fopenmp", "-pthread -std=c11", "-arch=sm_" + arch_number, "-pthread -std=c++11"] #-DSLOWER_ATOMIC disabled
+    parallel_flags = ["-fopenmp", "-pthread -std=c11", "-arch=sm_" + arch_number, "-pthread -std=c++11", "-w -I" + os.path.join(libhipcxx_path, "include/"), "-arch=sm_" + arch_number + " -w"]
     library = "-I" + lib_path
     exe_name = os.path.splitext(os.path.basename(code_file_name))[0]
     out_name = os.path.join(out_dir, exe_name)
@@ -67,27 +69,30 @@ def compile_code(code_file, code_counter, num_codes, command):
     sys.stdout.flush()
     print("compiling %s, %s out of %s programs\n" % (code_file, code_counter, num_codes))
     sys.stdout.flush()
-    try:
-        subprocess.run(command)
-    except:
-        exit()
+    #try:
+    subprocess.run(command)
+    #except:
+    #    exit()
 
 if __name__ == "__main__":
     # read command line
     args_val = sys.argv
-    if (len(args_val) < 5):
+    if (len(args_val) < 4):
         sys.exit(error_msg)
     # @code_dir: the directory of the code
     # @output_dir: the directory where the executables go
-    # @programming_model: C, CPP, OMP, or CUDA
-    # @gpu_computability: GPU computability
+    # @programming_model: C, CPP, OMP, CUDA, HIP-AMD, or HIP-NVIDIA
+    # @nvidia_compute_capability (optional for non-NVIDIA): NVIDIA GPU compute capability
     # @lib_path (optional): the directory of the library
 
     # read inputs
     code_path = args_val[1]
     out_dir = args_val[2]
     model_arg = args_val[3].lower()
-    gpu_computability = args_val[4]
+    
+    nvidia_compute_capability = "None"
+    if len(args_val) >= 5:
+        nvidia_compute_capability = args_val[4]
     
     if os.path.isdir(lib_defaultpath):
         lib_path = lib_defaultpath
@@ -104,8 +109,15 @@ if __name__ == "__main__":
     if model_arg in model_map:
         model = model_map[model_arg]
     else:
-        print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA\n", file=sys.stderr)
+        print("ERROR: Invalid programming_model argument, specify one of the following: C, CPP, OMP, CUDA, HIP-AMD, HIP-NVIDIA\n", file=sys.stderr)
         sys.exit(error_msg)
+    # If compiling HIP for AMD GPUs, check for libhipcxx requirement
+    if model == 4 and not os.path.isdir(libhipcxx_path + "/include/"):
+        print("ERROR: HIP specified but requirement libhipcxx/ not found at " + os.path.abspath(libhipcxx_path) + ". See \"HIP Prerequisites for AMD GPUs\" in the README.", file=sys.stderr)
+        sys.exit()
+    # If compiling HIP or CUDA for NVIDIA GPUs, check if nvidia_compute_capability is set
+    if (model == 2 or model == 5) and nvidia_compute_capability == "None":
+        print("ERROR: Targeting NVIDIA but nvidia_compute_capability argument is not set")
 
     # list code files
     code_files = [f for f in os.listdir(code_path) if os.path.isfile(os.path.join(code_path, f))]
@@ -113,14 +125,14 @@ if __name__ == "__main__":
     print("code_dir: %s" % (code_path))
     print("num_codes: %d\n" % (num_codes))
 
-    model_name = [".c", ".c", ".cu", ".cpp"]
+    model_extension = [".c", ".c", ".cu", ".cpp", ".cu", ".cu"] # hip uses .cu for cross-compatability
     # compile the codes
     code_counter = 0
     for code_file in code_files:
-        if code_file.endswith(model_name[model]):
+        if code_file.endswith(model_extension[model]):
             code_counter += 1
-            compile_code(code_file, code_counter, num_codes, compile_cmd(gpu_computability, model, lib_path, os.path.join(code_path, code_file), out_dir))
+            compile_code(code_file, code_counter, num_codes, compile_cmd(nvidia_compute_capability, model, lib_path, os.path.join(code_path, code_file), out_dir))
         else:
-            sys.exit('File %s does not match the programming model %s.' % (code_file, model_name[model]))
+            sys.exit('File %s does not match the programming model %s.' % (code_file, model_extension[model]))
 
 

@@ -1,0 +1,164 @@
+/*
+This file is part of the Indigo3 benchmark suite version 1.0.
+
+BSD 3-Clause License
+
+Copyright (c) 2024, Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+URL: The latest version of the Indigo3 benchmark suite is available at https://github.com/burtscher/Indigo3Suite/.
+
+Publication: This work is described in detail in the following paper.
+Yiqian Liu, Noushin Azami, Avery Vanausdal, and Martin Burtscher. "Indigo3: A Parallel Graph Analytics Benchmark Suite for Exploring Implementation Styles and Common Bugs." ACM Transactions on Parallel Computing. May 2024.
+*/
+
+
+#include <set>
+#include <limits.h>
+#include <sys/time.h>
+#include <hip/hip_runtime.h>
+#include "ECLgraph.h"
+#include "hip_atomic.h"
+#include "csort.h"
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define SWAP(a, b) do { __typeof__(a) temp = a; a = b; b = temp; } while (0)
+
+static double GPUcc_edge(const ECLgraph g, basic_t* const label, const int* const sp);
+
+static int GPUinfo(const int d)
+{
+  hipSetDevice(d);
+  hipDeviceProp_t deviceProp;
+  hipGetDeviceProperties(&deviceProp, d);
+  if ((deviceProp.major == 9999) && (deviceProp.minor == 9999)) {printf("ERROR: there is no CUDA capable device\n\n");  exit(-1);}
+  const int mTpSM = deviceProp.maxThreadsPerMultiProcessor;
+  const int SMs = deviceProp.multiProcessorCount;
+  printf("GPU: %s with %d SMs and %d mTpSM (%.1f MHz and %.1f MHz)\n", deviceProp.name, SMs, mTpSM, deviceProp.clockRate * 0.001, deviceProp.memoryClockRate * 0.001);
+  return SMs * mTpSM;
+}
+
+static void CheckCuda()
+{
+  hipError_t e;
+  hipDeviceSynchronize();
+  if (hipSuccess != (e = hipGetLastError())) {
+    fprintf(stderr, "CUDA error %d: %s\n", e, hipGetErrorString(e));
+    exit(-1);
+  }
+}
+
+#ifndef NO_VERIFY
+static void verify(const int v, const int id, const int* const __restrict__ nidx, const int* const __restrict__ nlist, basic_t* const __restrict__ nstat, const int nodes)
+{
+  if (nstat[v] < nodes) {
+    if (nstat[v] != id) {fprintf(stderr, "ERROR: found incorrect ID value\n\n");  exit(-1);}
+    nstat[v] = nodes;
+    for (int i = nidx[v]; i < nidx[v + 1]; i++) {
+      verify(nlist[i], id, nidx, nlist, nstat, nodes);
+    }
+  }
+}
+#endif // NO_VERIFY undefined
+
+int main(int argc, char* argv[])
+{
+  printf("cc topology-driven CUDA (%s)\n", __FILE__);
+  if (argc < 3) {fprintf(stderr, "USAGE: %s input_file_name runs\n", argv[0]); exit(-1);}
+
+  // process command line
+  ECLgraph g = readECLgraph(argv[1]);
+  printf("input: %s\n", argv[1]);
+  printf("nodes: %d\n", g.nodes);
+  printf("edges: %d\n", g.edges);
+  const int runveri = atoi(argv[2]);
+
+  // create starting point array
+  int* const sp = (int*)malloc(g.edges * sizeof(int));
+  for (int i = 0; i < g.nodes; i++) {
+    for (int j = g.nindex[i]; j < g.nindex[i + 1]; j++) {
+      sp[j] = i;
+    }
+  }
+
+  // allocate memory
+  basic_t* const label = (basic_t*)malloc(g.nodes * sizeof(basic_t));
+  ECLgraph d_g = g;
+  if (hipSuccess != hipMalloc((void **)&d_g.nindex, (g.nodes + 1) * sizeof(int))) {fprintf(stderr, "ERROR: could not allocate nindex\n"); exit(-1);}
+  if (hipSuccess != hipMalloc((void **)&d_g.nlist, g.edges * sizeof(int))) {fprintf(stderr, "ERROR: could not allocate nlist\n"); exit(-1);}
+  if (hipSuccess != hipMemcpy(d_g.nindex, g.nindex, (g.nodes + 1) * sizeof(int), hipMemcpyHostToDevice)) {fprintf(stderr, "ERROR: copying of index to device failed\n"); exit(-1);}
+  if (hipSuccess != hipMemcpy(d_g.nlist, g.nlist, g.edges * sizeof(int), hipMemcpyHostToDevice)) {fprintf(stderr, "ERROR: copying of nlist to device failed\n"); exit(-1);}
+
+  const int runs = atoi(argv[2]);
+  double runtimes [runs];
+
+  for (int i = 0; i < runs; i++) {
+    runtimes[i] = GPUcc_edge(d_g, label, sp);
+    CheckCuda();
+  }
+  const double med = median(runtimes, runs);
+  printf("runtime: %.6fs\n", med);
+  printf("GPU Throughput: %.6f gigaedges/s\n", 0.000000001 * g.edges / med);
+
+  // print result
+  std::set<int> s1;
+  for (int v = 0; v < g.nodes; v++) {
+    s1.insert(label[v]);
+  }
+  printf("number of connected components: %zu\n", s1.size());
+  
+  #ifndef NO_VERIFY
+  for (int v = 0; v < g.nodes; v++) {
+    for (int i = g.nindex[v]; i < g.nindex[v + 1]; i++) {
+      if (label[g.nlist[i]] != label[v]) {fprintf(stderr, "ERROR: found adjacent nodes in different components\n\n");  exit(-1);}
+    }
+  }
+
+  for (int v = 0; v < g.nodes; v++) {
+    if (label[v] >= g.nodes) {fprintf(stderr, "ERROR: found sentinel number\n\n");  exit(-1);}
+  }
+
+  std::set<int> s2;
+  int count = 0;
+  for (int v = 0; v < g.nodes; v++) {
+    if (label[v] < g.nodes) {
+      count++;
+      s2.insert(label[v]);
+      verify(v, label[v], g.nindex, g.nlist, label, g.nodes);
+    }
+  }
+  if (s1.size() != s2.size()) {fprintf(stderr, "ERROR: number of components do not match\n\n");  exit(-1);}
+  if (s1.size() != count) {fprintf(stderr, "ERROR: component IDs are not unique\n\n");  exit(-1);}
+
+  printf("verification passed\n\n");
+  #endif // NO_VERIFY undefined
+
+  // free memory
+  free(label);
+  free(sp);
+  freeECLgraph(&g);
+  return 0;
+}
